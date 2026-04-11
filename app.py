@@ -1568,10 +1568,16 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     # Настраиваемый текст или стандартный
     if custom_message:
-        intro_text = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
+        intro_text_raw = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
     else:
         default_msg = DEFAULT_MESSAGES['ru']['body']
-        intro_text = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
+        intro_text_raw = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
+    
+    # Преобразуем маркдаун в HTML для reportlab
+    intro_text = intro_text_raw.replace('\n\n', '<br/><br/>')
+    intro_text = intro_text.replace('\n• ', '<br/>• ')
+    intro_text = intro_text.replace('\n', '<br/>')
+    intro_text = f"<para>{intro_text}</para>"
     
     story.append(Paragraph(intro_text, intro_style))
     
@@ -2068,10 +2074,16 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     # Настраиваемый текст или стандартный
     if custom_message:
-        intro_text = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
+        intro_text_raw = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
     else:
         default_msg = DEFAULT_MESSAGES['en']['body']
-        intro_text = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
+        intro_text_raw = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
+    
+    # Преобразуем маркдаун в HTML для reportlab
+    intro_text = intro_text_raw.replace('\n\n', '<br/><br/>')
+    intro_text = intro_text.replace('\n• ', '<br/>• ')
+    intro_text = intro_text.replace('\n', '<br/>')
+    intro_text = f"<para>{intro_text}</para>"
     
     story.append(Paragraph(intro_text, intro_style))
     
