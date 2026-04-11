@@ -1774,7 +1774,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             pil_img.close()
             
             # Используем Image из reportlab
-            app_logo = Image(app_logo_path, width=250, height=200)
+            app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
@@ -2274,7 +2274,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             pil_img.close()
             
             # Use Image from reportlab
-            app_logo = Image(app_logo_path, width=250, height=200)
+            app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
