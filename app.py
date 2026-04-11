@@ -866,7 +866,8 @@ def generate_filename(journal_abbr: str, years: List[int], language: str, extens
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
                     grouped_articles: Dict[str, List[dict]], logo_path: str = None) -> bytes:
     """Генерация PDF отчета на русском языке с поддержкой кириллицы"""
-    
+
+    import hashlib                    
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.fonts import addMapping
@@ -1151,13 +1152,33 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== ОГЛАВЛЕНИЕ ==========
+    # ========== ОГЛАВЛЕНИЕ С ГИПЕРССЫЛКАМИ ==========
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
+    import hashlib
+    
+    # Стиль для ссылок в оглавлении (с подчеркиванием и синим цветом)
+    toc_link_style = ParagraphStyle(
+        'TOCLinkStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#2980B9'),
+        spaceAfter=4,
+        fontName=russian_font_name,
+        underline=True,
+        encoding='utf-8'
+    )
+    
     for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
+        # Создаем уникальный идентификатор для якоря
+        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode('utf-8')).hexdigest()[:8]}"
+        
+        # Создаем гиперссылку
         link_text = f'{i}. {clean_text(topic)} — {len(articles)} статей'
-        story.append(Paragraph(link_text, toc_style))
+        # Используем тег <a href="#anchor_id"> для создания ссылки
+        toc_link = Paragraph(f'<a href="#{anchor_id}">{link_text}</a>', toc_link_style)
+        story.append(toc_link)
         story.append(Spacer(1, 0.2*cm))
     
     if len(grouped_articles) > 30:
@@ -1165,8 +1186,26 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(PageBreak())
     
-    # ========== СТАТЬИ ПО ТЕМАМ ==========
-    for topic, articles in grouped_articles.items():
+    # ========== СТАТЬИ ПО ТЕМАМ С ЯКОРЯМИ ==========
+    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
+        # Создаем уникальный идентификатор для якоря (должен совпадать с тем, что в оглавлении)
+        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode('utf-8')).hexdigest()[:8]}"
+        
+        # Стиль для невидимого якоря
+        anchor_style = ParagraphStyle(
+            'AnchorStyle',
+            parent=styles['Normal'],
+            fontSize=1,
+            textColor=colors.white,
+            fontName=russian_font_name,
+            encoding='utf-8'
+        )
+        
+        # Добавляем невидимый якорь перед заголовком темы
+        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', anchor_style)
+        story.append(anchor_para)
+        
+        # Заголовок темы
         story.append(Paragraph(clean_text(topic), topic_style))
         story.append(Spacer(1, 0.3*cm))
         
