@@ -50,6 +50,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Загружаем логотип из корневой директории
+import os
+from PIL import Image
+
+LOGO_PATH = "logo.png"
+if os.path.exists(LOGO_PATH):
+    try:
+        logo_image = Image.open(LOGO_PATH)
+        st.session_state.app_logo = logo_image
+    except Exception as e:
+        st.session_state.app_logo = None
+        logger.warning(f"Could not load logo: {e}")
+else:
+    st.session_state.app_logo = None
+
 # ============================================================================
 # МУЛЬТИЯЗЫЧНАЯ ПОДДЕРЖКА
 # ============================================================================
