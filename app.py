@@ -2241,7 +2241,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     if app_logo_path and os.path.exists(app_logo_path):
         try:
             from PIL import Image as PILImage
-            pil_img = PILImage.open(logo_path)
+            pil_img = PILImage.open(app_logo_path)
             original_width, original_height = pil_img.size
             pil_img.close()
             
@@ -2253,7 +2253,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            footer_logo = Image(logo_path, width=new_width, height=new_height)
+            footer_logo = Image(app_logo_path, width=new_width, height=new_height)
             footer_logo.hAlign = 'CENTER'
             story.append(footer_logo)
             story.append(Spacer(1, 0.3*cm))
