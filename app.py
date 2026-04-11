@@ -944,7 +944,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     styles = getSampleStyleSheet()
     
     # Определяем базовое имя шрифта
-    base_font = 'Helvetica' if cyrillic_fonts_available else 'Times-Roman'
+    base_font = 'Helvetica'
     
     # Кастомные стили с поддержкой кириллицы
     title_style = ParagraphStyle(
