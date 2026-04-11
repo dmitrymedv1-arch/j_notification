@@ -1748,7 +1748,62 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(conclusion_text, conclusion_style))
     
     story.append(Spacer(1, 1*cm))
-    story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
+    
+    # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В КОНЦЕ ==========
+    try:
+        # Проверяем, есть ли логотип приложения в директории
+        possible_paths = [
+            "logo.png",  # Текущая директория
+            "./logo.png",  # Относительный путь
+            "app/logo.png",  # Если в поддиректории
+            os.path.join(os.path.dirname(__file__), "logo.png"),  # Абсолютный путь
+            os.path.join(os.getcwd(), "logo.png")  # Текущая рабочая директория
+        ]
+        
+        app_logo_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                app_logo_path = path
+                break
+        
+        if app_logo_path:
+            # Проверяем с помощью PIL
+            from PIL import Image as PILImage
+            pil_img = PILImage.open(app_logo_path)
+            pil_img.verify()
+            pil_img.close()
+            
+            # Используем Image из reportlab (меньший размер для футера)
+            app_logo = Image(app_logo_path, width=60, height=30)
+            app_logo.hAlign = 'CENTER'
+            story.append(app_logo)
+            story.append(Spacer(1, 0.2*cm))
+            logger.info(f"App logo loaded successfully from: {app_logo_path}")
+        else:
+            # Если логотип не найден, показываем эмодзи
+            story.append(Paragraph("📚", ParagraphStyle(
+                'LogoEmoji',
+                parent=styles['Normal'],
+                fontSize=30,
+                textColor=colors.HexColor('#667eea'),
+                alignment=TA_CENTER
+            )))
+            story.append(Spacer(1, 0.2*cm))
+            logger.warning("App logo not found, using emoji instead")
+            
+    except Exception as e:
+        logger.error(f"Could not load app logo: {e}")
+        # Если логотип не загрузился, показываем эмодзи
+        story.append(Paragraph("📚", ParagraphStyle(
+            'LogoEmoji',
+            parent=styles['Normal'],
+            fontSize=30,
+            textColor=colors.HexColor('#667eea'),
+            alignment=TA_CENTER
+        )))
+        story.append(Spacer(1, 0.2*cm))
+    
+    story.append(Paragraph(f"© Chimica Techno Acta | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Отчет подготовлен с использованием CTA Journal Analyzer Pro", footer_style))
     
     doc.build(story)
@@ -2193,7 +2248,62 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(conclusion_text, conclusion_style))
     
     story.append(Spacer(1, 1*cm))
-    story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
+    
+    # ========== APP LOGO AT THE END ==========
+    try:
+        # Check for app logo in various locations
+        possible_paths = [
+            "logo.png",  # Current directory
+            "./logo.png",  # Relative path
+            "app/logo.png",  # If in subdirectory
+            os.path.join(os.path.dirname(__file__), "logo.png"),  # Absolute path
+            os.path.join(os.getcwd(), "logo.png")  # Current working directory
+        ]
+        
+        app_logo_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                app_logo_path = path
+                break
+        
+        if app_logo_path:
+            # Verify with PIL
+            from PIL import Image as PILImage
+            pil_img = PILImage.open(app_logo_path)
+            pil_img.verify()
+            pil_img.close()
+            
+            # Use Image from reportlab (smaller size for footer)
+            app_logo = Image(app_logo_path, width=60, height=30)
+            app_logo.hAlign = 'CENTER'
+            story.append(app_logo)
+            story.append(Spacer(1, 0.2*cm))
+            logger.info(f"App logo loaded successfully from: {app_logo_path}")
+        else:
+            # If logo not found, show emoji
+            story.append(Paragraph("📚", ParagraphStyle(
+                'LogoEmoji',
+                parent=styles['Normal'],
+                fontSize=30,
+                textColor=colors.HexColor('#667eea'),
+                alignment=TA_CENTER
+            )))
+            story.append(Spacer(1, 0.2*cm))
+            logger.warning("App logo not found, using emoji instead")
+            
+    except Exception as e:
+        logger.error(f"Could not load app logo: {e}")
+        # If logo fails to load, show emoji
+        story.append(Paragraph("📚", ParagraphStyle(
+            'LogoEmoji',
+            parent=styles['Normal'],
+            fontSize=30,
+            textColor=colors.HexColor('#667eea'),
+            alignment=TA_CENTER
+        )))
+        story.append(Spacer(1, 0.2*cm))
+    
+    story.append(Paragraph(f"© Chimica Techno Acta | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Report generated using CTA Journal Analyzer Pro", footer_style))
     
     doc.build(story)
