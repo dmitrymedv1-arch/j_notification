@@ -1278,6 +1278,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.fonts import addMapping
+    import tempfile
+    import atexit
+    from io import BytesIO
     
     # Регистрируем шрифт с поддержкой кириллицы
     import os
@@ -1329,6 +1332,28 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         text = unicodedata.normalize('NFC', str(text))
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         return text
+    
+    # Вспомогательная функция для создания временного файла изображения
+    def create_temp_image(image_path):
+        """Создает временный файл изображения и возвращает путь к нему"""
+        if not image_path or not os.path.exists(image_path):
+            return None
+        
+        try:
+            with open(image_path, 'rb') as f:
+                img_data = f.read()
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                tmp_file.write(img_data)
+                tmp_path = tmp_file.name
+            
+            # Регистрируем удаление временного файла при завершении
+            atexit.register(lambda: os.unlink(tmp_path) if os.path.exists(tmp_path) else None)
+            
+            return tmp_path
+        except Exception as e:
+            logger.warning(f"Could not create temp image from {image_path}: {e}")
+            return None
     
     # Рассчитываем статистику
     stats = calculate_hierarchy_statistics(hierarchy)
@@ -1548,13 +1573,21 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     # ========== ТИТУЛЬНАЯ СТРАНИЦА ==========
     story.append(Spacer(1, 2*cm))
     
+    # Логотип журнала (пользовательский)
     if logo_path and os.path.exists(logo_path):
+        temp_logo_path = None
         try:
-            from PIL import Image as PILImage
+            # Создаем временный файл для логотипа
+            with open(logo_path, 'rb') as f:
+                img_data = f.read()
             
-            pil_img = PILImage.open(logo_path)
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                tmp_file.write(img_data)
+                temp_logo_path = tmp_file.name
+            
+            # Получаем размеры изображения
+            pil_img = PILImage.open(BytesIO(img_data))
             original_width, original_height = pil_img.size
-            pil_img.close()
             
             max_width = 180
             max_height = 100
@@ -1566,13 +1599,20 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            logo = Image(logo_path, width=new_width, height=new_height)
+            logo = Image(temp_logo_path, width=new_width, height=new_height)
             logo.hAlign = 'CENTER'
             story.append(logo)
             story.append(Spacer(1, 1*cm))
             
         except Exception as e:
-            print(f"Could not load logo: {e}")
+            logger.warning(f"Could not load logo: {e}")
+        finally:
+            # Очищаем временный файл после использования
+            if temp_logo_path and os.path.exists(temp_logo_path):
+                try:
+                    os.unlink(temp_logo_path)
+                except:
+                    pass
     
     story.append(Paragraph("Аналитический отчет", title_style))
     story.append(Paragraph(f"«{clean_text(journal_name)}»", subtitle_style))
@@ -1766,13 +1806,21 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
-    # Добавляем логотип ПРИЛОЖЕНИЯ в футер
+    # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В ФУТЕРЕ ==========
     if app_logo_path and os.path.exists(app_logo_path):
+        temp_app_logo_path = None
         try:
-            from PIL import Image as PILImage
-            pil_img = PILImage.open(app_logo_path)
+            # Создаем временный файл для логотипа приложения
+            with open(app_logo_path, 'rb') as f:
+                img_data = f.read()
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                tmp_file.write(img_data)
+                temp_app_logo_path = tmp_file.name
+            
+            # Получаем размеры изображения
+            pil_img = PILImage.open(BytesIO(img_data))
             original_width, original_height = pil_img.size
-            pil_img.close()
             
             max_width = 80
             max_height = 40
@@ -1782,12 +1830,20 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            footer_logo = Image(app_logo_path, width=new_width, height=new_height)
+            footer_logo = Image(temp_app_logo_path, width=new_width, height=new_height)
             footer_logo.hAlign = 'CENTER'
             story.append(footer_logo)
             story.append(Spacer(1, 0.3*cm))
+            
         except Exception as e:
             logger.warning(f"Could not load footer logo: {e}")
+        finally:
+            # Очищаем временный файл после использования
+            if temp_app_logo_path and os.path.exists(temp_app_logo_path):
+                try:
+                    os.unlink(temp_app_logo_path)
+                except:
+                    pass
     
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Отчет подготовлен с использованием CTA Journal Analyzer Pro", footer_style))
@@ -1804,6 +1860,10 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                     hierarchy: Dict, logo_path: str = None, custom_message: str = None,
                     app_logo_path: str = None) -> bytes:
     """Генерация PDF отчета на английском языке с иерархической группировкой"""
+    
+    import tempfile
+    import atexit
+    from io import BytesIO
     
     def clean_text(text):
         if not text:
@@ -2019,13 +2079,21 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     # ========== COVER PAGE ==========
     story.append(Spacer(1, 2*cm))
 
+    # Логотип журнала (пользовательский)
     if logo_path and os.path.exists(logo_path):
+        temp_logo_path = None
         try:
-            from PIL import Image as PILImage
+            # Создаем временный файл для логотипа
+            with open(logo_path, 'rb') as f:
+                img_data = f.read()
             
-            pil_img = PILImage.open(logo_path)
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                tmp_file.write(img_data)
+                temp_logo_path = tmp_file.name
+            
+            # Получаем размеры изображения
+            pil_img = PILImage.open(BytesIO(img_data))
             original_width, original_height = pil_img.size
-            pil_img.close()
             
             max_width = 180
             max_height = 100
@@ -2037,13 +2105,20 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            logo = Image(logo_path, width=new_width, height=new_height)
+            logo = Image(temp_logo_path, width=new_width, height=new_height)
             logo.hAlign = 'CENTER'
             story.append(logo)
             story.append(Spacer(1, 1*cm))
             
         except Exception as e:
             logger.warning(f"Could not load logo: {e}")
+        finally:
+            # Очищаем временный файл после использования
+            if temp_logo_path and os.path.exists(temp_logo_path):
+                try:
+                    os.unlink(temp_logo_path)
+                except:
+                    pass
     
     story.append(Paragraph("Analytical Report", title_style))
     story.append(Paragraph(f"«{clean_text(journal_name)}»", subtitle_style))
@@ -2237,13 +2312,21 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
-    # Добавляем логотип в футер, если он есть
+    # ========== APP LOGO IN FOOTER ==========
     if app_logo_path and os.path.exists(app_logo_path):
+        temp_app_logo_path = None
         try:
-            from PIL import Image as PILImage
-            pil_img = PILImage.open(app_logo_path)
+            # Создаем временный файл для логотипа приложения
+            with open(app_logo_path, 'rb') as f:
+                img_data = f.read()
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                tmp_file.write(img_data)
+                temp_app_logo_path = tmp_file.name
+            
+            # Получаем размеры изображения
+            pil_img = PILImage.open(BytesIO(img_data))
             original_width, original_height = pil_img.size
-            pil_img.close()
             
             max_width = 80
             max_height = 40
@@ -2253,12 +2336,20 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            footer_logo = Image(app_logo_path, width=new_width, height=new_height)
+            footer_logo = Image(temp_app_logo_path, width=new_width, height=new_height)
             footer_logo.hAlign = 'CENTER'
             story.append(footer_logo)
             story.append(Spacer(1, 0.3*cm))
+            
         except Exception as e:
             logger.warning(f"Could not load footer logo: {e}")
+        finally:
+            # Очищаем временный файл после использования
+            if temp_app_logo_path and os.path.exists(temp_app_logo_path):
+                try:
+                    os.unlink(temp_app_logo_path)
+                except:
+                    pass
     
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Report generated using CTA Journal Analyzer Pro", footer_style))
@@ -2888,11 +2979,15 @@ def main():
                                 if len(articles) > 5:
                                     st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*... и {len(articles) - 5} других статей*")
             
-            # Экспорт
+            # ========== ЭКСПОРТ ОТЧЕТОВ ==========
             st.markdown("---")
             st.markdown(f"### {t['export_btn']}")
             
             journal_abbr = generate_journal_abbreviation(journal_name)
+            
+            # ПОЛУЧАЕМ АБСОЛЮТНЫЙ ПУТЬ К ЛОГОТИПУ ПРИЛОЖЕНИЯ
+            import os
+            app_logo_abs_path = os.path.abspath("logo.png")
             
             col1, col2 = st.columns(2)
             
@@ -2900,61 +2995,85 @@ def main():
                 st.markdown("**PDF Reports**")
                 
                 # PDF English
-                pdf_en_data = generate_pdf_en(journal_name, journal_abbr, years, hierarchy, 
-                                              st.session_state.journal_logo, 
-                                              st.session_state.custom_message_en,
-                                              app_logo_path="logo.png")
-                filename_en = generate_filename(journal_abbr, years, 'en', 'pdf')
-                st.download_button(
-                    label="📄 PDF (English)",
-                    data=pdf_en_data,
-                    file_name=filename_en,
-                    mime="application/pdf",
-                    use_container_width=True,
-                    key="pdf_en"
-                )
+                try:
+                    pdf_en_data = generate_pdf_en(
+                        journal_name, 
+                        journal_abbr, 
+                        years, 
+                        hierarchy, 
+                        st.session_state.journal_logo,  # путь к логотипу журнала
+                        st.session_state.custom_message_en,
+                        app_logo_path=app_logo_abs_path  # абсолютный путь к логотипу приложения
+                    )
+                    filename_en = generate_filename(journal_abbr, years, 'en', 'pdf')
+                    st.download_button(
+                        label="📄 PDF (English)",
+                        data=pdf_en_data,
+                        file_name=filename_en,
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="pdf_en"
+                    )
+                except Exception as e:
+                    st.error(f"Error generating English PDF: {str(e)}")
+                    logger.error(f"PDF EN generation error: {e}")
                 
                 # PDF Russian
-                pdf_ru_data = generate_pdf_ru(journal_name, journal_abbr, years, hierarchy, 
-                                              st.session_state.journal_logo,
-                                              st.session_state.custom_message_ru,
-                                              app_logo_path="logo.png")
-                filename_ru = generate_filename(journal_abbr, years, 'ru', 'pdf')
-                st.download_button(
-                    label="📄 PDF (Русский)",
-                    data=pdf_ru_data,
-                    file_name=filename_ru,
-                    mime="application/pdf",
-                    use_container_width=True,
-                    key="pdf_ru"
-                )
+                try:
+                    pdf_ru_data = generate_pdf_ru(
+                        journal_name, 
+                        journal_abbr, 
+                        years, 
+                        hierarchy, 
+                        st.session_state.journal_logo,  # путь к логотипу журнала
+                        st.session_state.custom_message_ru,
+                        app_logo_path=app_logo_abs_path  # абсолютный путь к логотипу приложения
+                    )
+                    filename_ru = generate_filename(journal_abbr, years, 'ru', 'pdf')
+                    st.download_button(
+                        label="📄 PDF (Русский)",
+                        data=pdf_ru_data,
+                        file_name=filename_ru,
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="pdf_ru"
+                    )
+                except Exception as e:
+                    st.error(f"Error generating Russian PDF: {str(e)}")
+                    logger.error(f"PDF RU generation error: {e}")
             
             with col2:
                 st.markdown("**TXT Reports**")
                 
                 # TXT English
-                txt_en_data = generate_txt_en(journal_name, years, hierarchy, st.session_state.custom_message_en)
-                filename_en_txt = generate_filename(journal_abbr, years, 'en', 'txt')
-                st.download_button(
-                    label="📝 TXT (English)",
-                    data=txt_en_data,
-                    file_name=filename_en_txt,
-                    mime="text/plain",
-                    use_container_width=True,
-                    key="txt_en"
-                )
+                try:
+                    txt_en_data = generate_txt_en(journal_name, years, hierarchy, st.session_state.custom_message_en)
+                    filename_en_txt = generate_filename(journal_abbr, years, 'en', 'txt')
+                    st.download_button(
+                        label="📝 TXT (English)",
+                        data=txt_en_data,
+                        file_name=filename_en_txt,
+                        mime="text/plain",
+                        use_container_width=True,
+                        key="txt_en"
+                    )
+                except Exception as e:
+                    st.error(f"Error generating English TXT: {str(e)}")
                 
                 # TXT Russian
-                txt_ru_data = generate_txt_ru(journal_name, years, hierarchy, st.session_state.custom_message_ru)
-                filename_ru_txt = generate_filename(journal_abbr, years, 'ru', 'txt')
-                st.download_button(
-                    label="📝 TXT (Русский)",
-                    data=txt_ru_data,
-                    file_name=filename_ru_txt,
-                    mime="text/plain",
-                    use_container_width=True,
-                    key="txt_ru"
-                )
+                try:
+                    txt_ru_data = generate_txt_ru(journal_name, years, hierarchy, st.session_state.custom_message_ru)
+                    filename_ru_txt = generate_filename(journal_abbr, years, 'ru', 'txt')
+                    st.download_button(
+                        label="📝 TXT (Русский)",
+                        data=txt_ru_data,
+                        file_name=filename_ru_txt,
+                        mime="text/plain",
+                        use_container_width=True,
+                        key="txt_ru"
+                    )
+                except Exception as e:
+                    st.error(f"Error generating Russian TXT: {str(e)}")
             
             # Кнопка нового анализа
             st.markdown("---")
