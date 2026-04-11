@@ -1765,6 +1765,30 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(conclusion_text, conclusion_style))
     
     story.append(Spacer(1, 1*cm))
+    
+    # Добавляем логотип в футер, если он есть
+    if logo_path and os.path.exists(logo_path):
+        try:
+            from PIL import Image as PILImage
+            pil_img = PILImage.open(logo_path)
+            original_width, original_height = pil_img.size
+            pil_img.close()
+            
+            max_width = 80
+            max_height = 40
+            width_ratio = max_width / original_width
+            height_ratio = max_height / original_height
+            scale_ratio = min(width_ratio, height_ratio)
+            new_width = original_width * scale_ratio
+            new_height = original_height * scale_ratio
+            
+            footer_logo = Image(logo_path, width=new_width, height=new_height)
+            footer_logo.hAlign = 'CENTER'
+            story.append(footer_logo)
+            story.append(Spacer(1, 0.3*cm))
+        except Exception as e:
+            logger.warning(f"Could not load footer logo: {e}")
+    
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Отчет подготовлен с использованием CTA Journal Analyzer Pro", footer_style))
     
@@ -2212,6 +2236,30 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(conclusion_text, conclusion_style))
     
     story.append(Spacer(1, 1*cm))
+    
+    # Добавляем логотип в футер, если он есть
+    if logo_path and os.path.exists(logo_path):
+        try:
+            from PIL import Image as PILImage
+            pil_img = PILImage.open(logo_path)
+            original_width, original_height = pil_img.size
+            pil_img.close()
+            
+            max_width = 80
+            max_height = 40
+            width_ratio = max_width / original_width
+            height_ratio = max_height / original_height
+            scale_ratio = min(width_ratio, height_ratio)
+            new_width = original_width * scale_ratio
+            new_height = original_height * scale_ratio
+            
+            footer_logo = Image(logo_path, width=new_width, height=new_height)
+            footer_logo.hAlign = 'CENTER'
+            story.append(footer_logo)
+            story.append(Spacer(1, 0.3*cm))
+        except Exception as e:
+            logger.warning(f"Could not load footer logo: {e}")
+    
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Report generated using CTA Journal Analyzer Pro", footer_style))
     
