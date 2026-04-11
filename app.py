@@ -2884,6 +2884,7 @@ def main():
                     )
                     if st.button(t['use_default'], key="reset_en"):
                         st.session_state.custom_message_en = DEFAULT_MESSAGES['en']['body']
+                        st.session_state.msg_editor_en = DEFAULT_MESSAGES['en']['body']
                         st.rerun()
                 else:
                     custom_msg = st.text_area(
@@ -2893,7 +2894,9 @@ def main():
                         key="msg_editor_ru"
                     )
                     if st.button(t['use_default'], key="reset_ru"):
+                    if st.button(t['use_default'], key="reset_ru"):
                         st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
+                        st.session_state.msg_editor_ru = DEFAULT_MESSAGES['ru']['body']
                         st.rerun()
                 
                 # Сохраняем сообщение в session_state
