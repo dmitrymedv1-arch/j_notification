@@ -168,7 +168,7 @@ LANGUAGES = {
 DEFAULT_MESSAGES = {
     'en': {
         'title': 'Dear Colleagues!',
-        'body': """We are pleased to present a curated collection of articles published in «JOURNAL_NAME» during YEARS. Each paper has undergone rigorous peer-review and represents a complete scientific investigation.
+        'body': """We are pleased to present a curated collection of articles published in the «JOURNAL_NAME» during YEARS. Each paper has undergone rigorous peer-review and represents a complete scientific investigation.
 
 Why these papers deserve your attention and citations?
 • They address cutting-edge directions in modern science
