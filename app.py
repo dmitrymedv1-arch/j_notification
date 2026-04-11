@@ -2876,26 +2876,34 @@ def main():
             
             with st.expander(f"📝 {t['customize_message']} ({language})"):
                 if language == "English":
-                    # Используем key для автоматической синхронизации с session_state
-                    st.text_area(
+                    # Используем отдельную переменную для редактирования, не связанную с key
+                    edited_message = st.text_area(
                         t['message_preview'],
                         value=st.session_state.custom_message_en,
                         height=300,
-                        key="custom_message_en"  # Ключ совпадает с именем в session_state
+                        key="custom_message_editor_en"  # Другой ключ!
                     )
-                    # Кнопка сброса - просто меняем значение в session_state
+                    # Сохраняем изменения в session_state при изменении
+                    if edited_message != st.session_state.custom_message_en:
+                        st.session_state.custom_message_en = edited_message
+                    
+                    # Кнопка сброса
                     if st.button(t['use_default'], key="reset_en"):
                         st.session_state.custom_message_en = DEFAULT_MESSAGES['en']['body']
                         st.rerun()
                 else:
                     # Русская версия
-                    st.text_area(
+                    edited_message = st.text_area(
                         t['message_preview'],
                         value=st.session_state.custom_message_ru,
                         height=300,
-                        key="custom_message_ru"  # Ключ совпадает с именем в session_state
+                        key="custom_message_editor_ru"  # Другой ключ!
                     )
-                    # Кнопка сброса - просто меняем значение в session_state
+                    # Сохраняем изменения в session_state при изменении
+                    if edited_message != st.session_state.custom_message_ru:
+                        st.session_state.custom_message_ru = edited_message
+                    
+                    # Кнопка сброса
                     if st.button(t['use_default'], key="reset_ru"):
                         st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
                         st.rerun()
