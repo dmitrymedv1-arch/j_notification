@@ -411,7 +411,14 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
         logger.info(f"Using cached journal data for ISSN {issn}")
         return cached
     
-    logger.info(f"Searching for journal with ISSN {issn}")
+    # Приводим ISSN к формату XXXX-XXXX для OpenAlex
+    issn_clean = re.sub(r'[^0-9X]', '', issn.upper())
+    if len(issn_clean) == 8:
+        issn_formatted = f"{issn_clean[:4]}-{issn_clean[4:]}"
+    else:
+        issn_formatted = issn
+    
+    logger.info(f"Searching for journal with ISSN {issn_formatted}")
     
     try:
         # OpenAlex использует ISSN-L или обычный ISSN
@@ -433,7 +440,29 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
                 logger.info(f"Found journal: {source.get('display_name')}")
                 return source
             else:
-                logger.warning(f"No journal found for ISSN {issn}")
+                # Пробуем поискать через primary_location.source.issn в works
+                logger.warning(f"No journal found for ISSN {issn_formatted}, trying alternative search...")
+                alt_url = f"{OPENALEX_BASE_URL}/works"
+                alt_params = {
+                    "filter": f"primary_location.source.issn:{issn_formatted}",
+                    "per-page": 1,
+                    "mailto": MAILTO
+                }
+                alt_response = requests.get(alt_url, params=alt_params, headers=POLITE_POOL_HEADER, timeout=30)
+                
+                if alt_response.status_code == 200:
+                    alt_data = alt_response.json()
+                    if alt_data.get('results'):
+                        # Извлекаем информацию о журнале из первой работы
+                        first_work = alt_data['results'][0]
+                        primary_location = first_work.get('primary_location', {})
+                        source = primary_location.get('source', {})
+                        if source:
+                            cache_source(issn, source)
+                            logger.info(f"Found journal via alternative method: {source.get('display_name')}")
+                            return source
+                
+                logger.warning(f"No journal found for ISSN {issn_formatted}")
                 return None
         else:
             logger.error(f"Error fetching journal: {response.status_code}")
@@ -536,7 +565,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     page_count = 0
     total_count = 0
     
-    # Строим фильтр
+    # Используем более надежный фильтр через primary_location.source.id
     years_str = "|".join(map(str, years))
     filter_str = f"primary_location.source.id:{source_id},publication_year:{years_str}"
     
