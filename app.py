@@ -3033,7 +3033,6 @@ def main():
     st.markdown("""
     <div class="footer">
         <p>© CTA, https://chimicatechnoacta.ru / developed by daM©</p>
-        <p style="font-size: 0.7rem; color: #aaa;">v3.0 - Journal Analyzer Pro</p>
     </div>
     """, unsafe_allow_html=True)
 
