@@ -35,6 +35,11 @@ from reportlab.platypus import Image
 from reportlab.platypus import KeepTogether
 import xlsxwriter
 from PIL import Image as PILImage
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', 'DejaVuSans-Bold.ttf'))
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -863,7 +868,56 @@ def generate_filename(journal_abbr: str, years: List[int], language: str, extens
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
                     grouped_articles: Dict[str, List[dict]], logo_path: str = None) -> bytes:
-    """Генерация PDF отчета на русском языке с активным оглавлением"""
+    """Генерация PDF отчета на русском языке с активным оглавлением и поддержкой кириллицы"""
+    
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.fonts import addMapping
+    
+    # Регистрация шрифтов с поддержкой кириллицы
+    # Пытаемся зарегистрировать стандартные шрифты ReportLab с кириллической кодировкой
+    try:
+        # Регистрируем шрифт Helvetica с кириллической кодировкой (если доступен)
+        pdfmetrics.registerFont(TTFont('Helvetica-Cyr', 'Helvetica.ttf'))
+        pdfmetrics.registerFont(TTFont('Helvetica-Bold-Cyr', 'Helvetica-Bold.ttf'))
+        pdfmetrics.registerFont(TTFont('Helvetica-Oblique-Cyr', 'Helvetica-Oblique.ttf'))
+        pdfmetrics.registerFont(TTFont('Helvetica-BoldOblique-Cyr', 'Helvetica-BoldOblique.ttf'))
+        
+        # Создаем mapping для использования зарегистрированных шрифтов
+        addMapping('Helvetica', 0, 0, 'Helvetica-Cyr')      # normal
+        addMapping('Helvetica', 1, 0, 'Helvetica-Bold-Cyr') # bold
+        addMapping('Helvetica', 0, 1, 'Helvetica-Oblique-Cyr') # italic
+        addMapping('Helvetica', 1, 1, 'Helvetica-BoldOblique-Cyr') # bold italic
+        
+        cyrillic_fonts_available = True
+        logger.info("Cyrillic fonts registered successfully")
+        
+    except Exception as e:
+        # Если Helvetica с кириллицей не найден, используем встроенную поддержку
+        logger.warning(f"Could not register Helvetica-Cyr, using fallback: {e}")
+        cyrillic_fonts_available = False
+        
+        # Альтернатива: пробуем зарегистрировать DejaVu Sans (часто доступен в Linux)
+        try:
+            import os
+            font_paths = [
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+                '/System/Library/Fonts/Helvetica.ttc',
+                'C:/Windows/Fonts/arial.ttf'
+            ]
+            
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+                    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', font_path.replace('.ttf', '-Bold.ttf') if 'DejaVu' in font_path else font_path))
+                    addMapping('Helvetica', 0, 0, 'DejaVuSans')
+                    addMapping('Helvetica', 1, 0, 'DejaVuSans-Bold')
+                    cyrillic_fonts_available = True
+                    logger.info(f"Registered font from: {font_path}")
+                    break
+        except Exception as e2:
+            logger.warning(f"Could not register fallback font: {e2}")
     
     def clean_text(text):
         if not text:
@@ -874,6 +928,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         text = unicodedata.normalize('NFC', str(text))
         text = re.sub(r'<[^>]+>', '', text)
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        # Оставляем русские и английские буквы, цифры и базовую пунктуацию
         allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)\d]'
         text = re.sub(allowed_pattern, '', text)
         return text
@@ -891,7 +946,10 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     styles = getSampleStyleSheet()
     
-    # Кастомные стили
+    # Определяем базовое имя шрифта
+    base_font = 'Helvetica' if cyrillic_fonts_available else 'Times-Roman'
+    
+    # Кастомные стили с поддержкой кириллицы
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -899,7 +957,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=12,
         alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     subtitle_style = ParagraphStyle(
@@ -909,7 +968,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#34495E'),
         spaceAfter=8,
         alignment=TA_CENTER,
-        fontName='Helvetica'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     topic_style = ParagraphStyle(
@@ -919,7 +979,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#16A085'),
         spaceAfter=10,
         spaceBefore=15,
-        fontName='Helvetica-Bold'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     article_title_style = ParagraphStyle(
@@ -928,7 +989,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=11,
         textColor=colors.HexColor('#2980B9'),
         spaceAfter=5,
-        fontName='Helvetica-Bold'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     authors_style = ParagraphStyle(
@@ -937,7 +999,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=3,
-        fontName='Helvetica'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     meta_style = ParagraphStyle(
@@ -946,7 +1009,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#7F8C8D'),
         spaceAfter=3,
-        fontName='Helvetica'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     citation_style = ParagraphStyle(
@@ -955,7 +1019,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#27AE60'),
         spaceAfter=3,
-        fontName='Helvetica-Bold'
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     toc_style = ParagraphStyle(
@@ -964,8 +1029,20 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#2980B9'),
         spaceAfter=4,
-        fontName='Helvetica',
-        underline=True
+        fontName=base_font,
+        underline=True,
+        encoding='utf-8'
+    )
+    
+    intro_style = ParagraphStyle(
+        'IntroStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#2C3E50'),
+        spaceAfter=20,
+        alignment=TA_JUSTIFY,
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     footer_style = ParagraphStyle(
@@ -975,7 +1052,38 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#95A5A6'),
         spaceBefore=15,
         alignment=TA_CENTER,
-        fontName='Helvetica-Oblique'
+        fontName=base_font,
+        encoding='utf-8'
+    )
+    
+    separator_style = ParagraphStyle(
+        'Separator',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#BDC3C7'),
+        alignment=TA_CENTER,
+        fontName=base_font,
+        encoding='utf-8'
+    )
+    
+    conclusion_style = ParagraphStyle(
+        'ConclusionStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#2C3E50'),
+        spaceAfter=20,
+        alignment=TA_JUSTIFY,
+        fontName=base_font,
+        encoding='utf-8'
+    )
+    
+    anchor_style = ParagraphStyle(
+        'AnchorStyle',
+        parent=styles['Normal'],
+        fontSize=1,
+        textColor=colors.white,
+        fontName=base_font,
+        encoding='utf-8'
     )
     
     story = []
@@ -987,31 +1095,20 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         try:
             from PIL import Image as PILImage
             
-            # Открываем изображение для получения исходных размеров
             pil_img = PILImage.open(logo_path)
-            
-            # Получаем исходные размеры
             original_width, original_height = pil_img.size
-            
-            # Закрываем изображение после получения размеров
             pil_img.close()
             
-            # Определяем максимальную ширину для логотипа (например, 180 пикселей)
             max_width = 180
             max_height = 100
             
-            # Рассчитываем масштаб с сохранением пропорций
             width_ratio = max_width / original_width
             height_ratio = max_height / original_height
-            
-            # Берем минимальный коэффициент, чтобы логотип поместился в оба ограничения
             scale_ratio = min(width_ratio, height_ratio)
             
-            # Вычисляем новые размеры с сохранением пропорций
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            # Создаем Image с рассчитанными размерами
             logo = Image(logo_path, width=new_width, height=new_height)
             logo.hAlign = 'CENTER'
             story.append(logo)
@@ -1043,15 +1140,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     это признание вклада коллег и развитие научного сообщества.
     """
     
-    story.append(Paragraph(intro_text, ParagraphStyle(
-        'IntroStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor('#2C3E50'),
-        spaceAfter=20,
-        alignment=TA_JUSTIFY,
-        fontName='Helvetica'
-    )))
+    story.append(Paragraph(intro_text, intro_style))
     
     total_articles = sum(len(articles) for articles in grouped_articles.values())
     total_topics = len(grouped_articles)
@@ -1072,10 +1161,11 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#667eea')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, 0), base_font),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F4F4')]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     
     story.append(stats_table)
@@ -1085,25 +1175,15 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
-    # Словарь для хранения номеров страниц для каждой темы
-    topic_pages = {}
-    
-    # Временный список для хранения ссылок оглавления
     toc_links = []
     
     for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
-        # Создаем уникальный идентификатор для якоря
         anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
-        topic_pages[topic] = {'page': None, 'anchor': anchor_id, 'number': i}
-        
-        # Добавляем ссылку в оглавление
         link_text = f'{i}. {clean_text(topic)} — {len(articles)} статей'
-        # Используем специальный тег <a> с именем якоря
         toc_link = Paragraph(f'<a href="#{anchor_id}">{link_text}</a>', toc_style)
         toc_links.append(toc_link)
         toc_links.append(Spacer(1, 0.2*cm))
     
-    # Добавляем все ссылки в story
     story.extend(toc_links)
     
     if len(grouped_articles) > 30:
@@ -1115,30 +1195,19 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
         anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
         
-        # Добавляем якорь перед заголовком темы
-        # Используем KeepTogether для корректного позиционирования
-        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle(
-            'AnchorStyle',
-            parent=styles['Normal'],
-            fontSize=1,
-            textColor=colors.white
-        ))
+        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', anchor_style)
         story.append(anchor_para)
         
-        # Заголовок темы
         story.append(Paragraph(clean_text(topic), topic_style))
         story.append(Spacer(1, 0.3*cm))
         
         for idx, article in enumerate(articles, 1):
-            # Заголовок статьи
             title = clean_text(article.get('title', 'Без названия'))
             story.append(Paragraph(f"{idx}. {title}", article_title_style))
             
-            # Авторы
             authors = clean_text(article.get('authors', 'Авторы не указаны'))
             story.append(Paragraph(f"<b>Авторы:</b> {authors}", authors_style))
             
-            # Метаданные
             journal = clean_text(article.get('journal_name', journal_name))
             year = article.get('publication_year', '')
             volume = article.get('volume', '')
@@ -1157,7 +1226,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             
             story.append(Paragraph(", ".join(meta_parts), meta_style))
             
-            # Цитирования
             citations = article.get('cited_by_count', 0)
             citations_per_year = article.get('citations_per_year', 0)
             is_highly = article.get('is_highly_cited', False)
@@ -1168,7 +1236,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             
             story.append(Paragraph(citation_text, citation_style))
             
-            # DOI ссылка
             doi_url = article.get('doi_url', '')
             if doi_url:
                 story.append(Paragraph(f"<b>DOI:</b> <link href='{doi_url}'>{doi_url}</link>", meta_style))
@@ -1176,13 +1243,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             story.append(Spacer(1, 0.2*cm))
             
             if idx < len(articles):
-                story.append(Paragraph("─" * 50, ParagraphStyle(
-                    'Separator',
-                    parent=styles['Normal'],
-                    fontSize=8,
-                    textColor=colors.HexColor('#BDC3C7'),
-                    alignment=TA_CENTER
-                )))
+                story.append(Paragraph("─" * 50, separator_style))
                 story.append(Spacer(1, 0.2*cm))
         
         story.append(Spacer(1, 0.5*cm))
@@ -1203,15 +1264,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     Отчет сгенерирован автоматически с использованием данных OpenAlex API.
     """
     
-    story.append(Paragraph(conclusion_text, ParagraphStyle(
-        'ConclusionStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor('#2C3E50'),
-        spaceAfter=20,
-        alignment=TA_JUSTIFY,
-        fontName='Helvetica'
-    )))
+    story.append(Paragraph(conclusion_text, conclusion_style))
     
     story.append(Spacer(1, 1*cm))
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
