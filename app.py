@@ -1295,8 +1295,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     • Can serve as a foundation for your future research<br/>
     • Citing these works strengthens scholarly dialogue in your field<br/><br/>
     We invite you to explore this selection and consider incorporating these works 
-    into your research. Every citation is not merely a reference — it's an acknowledgment 
-    of colleagues' contributions and a step forward for the scientific community.
+    into your own research. Every citation acknowledges the contributions of 
+    colleagues and represents a step forward for the scientific community.
     """
     
     story.append(Paragraph(intro_text, ParagraphStyle(
