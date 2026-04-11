@@ -863,13 +863,19 @@ def generate_filename(journal_abbr: str, years: List[int], language: str, extens
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
                     grouped_articles: Dict[str, List[dict]], logo_path: str = None) -> bytes:
-    """Генерация PDF отчета на русском языке"""
+    """Генерация PDF отчета на русском языке с активным оглавлением"""
     
     def clean_text(text):
         if not text:
             return ""
+        if isinstance(text, bytes):
+            text = text.decode('utf-8', 'ignore')
+        import unicodedata
+        text = unicodedata.normalize('NFC', str(text))
         text = re.sub(r'<[^>]+>', '', text)
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)\d]'
+        text = re.sub(allowed_pattern, '', text)
         return text
     
     buffer = io.BytesIO()
@@ -952,6 +958,16 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontName='Helvetica-Bold'
     )
     
+    toc_style = ParagraphStyle(
+        'TOCStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#2980B9'),
+        spaceAfter=4,
+        fontName='Helvetica',
+        underline=True
+    )
+    
     footer_style = ParagraphStyle(
         'FooterStyle',
         parent=styles['Normal'],
@@ -967,7 +983,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     # ========== ТИТУЛЬНАЯ СТРАНИЦА ==========
     story.append(Spacer(1, 2*cm))
     
-    # Логотип
     if logo_path and os.path.exists(logo_path):
         try:
             pil_img = PILImage.open(logo_path)
@@ -983,12 +998,10 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(f"«{clean_text(journal_name)}»", subtitle_style))
     story.append(Spacer(1, 1*cm))
     
-    # Период
     years_str = format_year_filter_for_filename(years)
     story.append(Paragraph(f"Период публикации: {years_str}", subtitle_style))
     story.append(Spacer(1, 1.5*cm))
     
-    # Вступительное обращение
     intro_text = f"""
     <b>Уважаемые коллеги!</b><br/><br/>
     Представляем Вашему вниманию тематический обзор статей, опубликованных в журнале 
@@ -1014,7 +1027,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontName='Helvetica'
     )))
     
-    # Статистика
     total_articles = sum(len(articles) for articles in grouped_articles.values())
     total_topics = len(grouped_articles)
     highly_cited = sum(1 for articles in grouped_articles.values() 
@@ -1041,27 +1053,53 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     ]))
     
     story.append(stats_table)
-    
     story.append(PageBreak())
     
-    # ========== ОГЛАВЛЕНИЕ ==========
+    # ========== ОГЛАВЛЕНИЕ С ГИПЕРССЫЛКАМИ ==========
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
-    toc_items = []
-    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
-        toc_items.append(f"{i}. {clean_text(topic)} — {len(articles)} статей")
+    # Словарь для хранения номеров страниц для каждой темы
+    topic_pages = {}
     
-    toc_text = "<br/>".join(toc_items[:30])
-    story.append(Paragraph(toc_text, meta_style))
+    # Временный список для хранения ссылок оглавления
+    toc_links = []
+    
+    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
+        # Создаем уникальный идентификатор для якоря
+        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
+        topic_pages[topic] = {'page': None, 'anchor': anchor_id, 'number': i}
+        
+        # Добавляем ссылку в оглавление
+        link_text = f'{i}. {clean_text(topic)} — {len(articles)} статей'
+        # Используем специальный тег <a> с именем якоря
+        toc_link = Paragraph(f'<a href="#{anchor_id}">{link_text}</a>', toc_style)
+        toc_links.append(toc_link)
+        toc_links.append(Spacer(1, 0.2*cm))
+    
+    # Добавляем все ссылки в story
+    story.extend(toc_links)
     
     if len(grouped_articles) > 30:
         story.append(Paragraph(f"... и {len(grouped_articles)-30} других тем", meta_style))
     
     story.append(PageBreak())
     
-    # ========== СТАТЬИ ПО ТЕМАМ ==========
-    for topic, articles in grouped_articles.items():
+    # ========== СТАТЬИ ПО ТЕМАМ С ЯКОРЯМИ ==========
+    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
+        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
+        
+        # Добавляем якорь перед заголовком темы
+        # Используем KeepTogether для корректного позиционирования
+        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle(
+            'AnchorStyle',
+            parent=styles['Normal'],
+            fontSize=1,
+            textColor=colors.white
+        ))
+        story.append(anchor_para)
+        
+        # Заголовок темы
         story.append(Paragraph(clean_text(topic), topic_style))
         story.append(Spacer(1, 0.3*cm))
         
