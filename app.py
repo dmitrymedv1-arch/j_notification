@@ -865,56 +865,49 @@ def generate_filename(journal_abbr: str, years: List[int], language: str, extens
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
                     grouped_articles: Dict[str, List[dict]], logo_path: str = None) -> bytes:
-    """Генерация PDF отчета на русском языке с активным оглавлением и поддержкой кириллицы"""
+    """Генерация PDF отчета на русском языке с поддержкой кириллицы"""
     
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.fonts import addMapping
     
-    # Регистрация шрифтов с поддержкой кириллицы
-    # Пытаемся зарегистрировать стандартные шрифты ReportLab с кириллической кодировкой
-    try:
-        # Регистрируем шрифт Helvetica с кириллической кодировкой (если доступен)
-        pdfmetrics.registerFont(TTFont('Helvetica-Cyr', 'Helvetica.ttf'))
-        pdfmetrics.registerFont(TTFont('Helvetica-Bold-Cyr', 'Helvetica-Bold.ttf'))
-        pdfmetrics.registerFont(TTFont('Helvetica-Oblique-Cyr', 'Helvetica-Oblique.ttf'))
-        pdfmetrics.registerFont(TTFont('Helvetica-BoldOblique-Cyr', 'Helvetica-BoldOblique.ttf'))
-        
-        # Создаем mapping для использования зарегистрированных шрифтов
-        addMapping('Helvetica', 0, 0, 'Helvetica-Cyr')      # normal
-        addMapping('Helvetica', 1, 0, 'Helvetica-Bold-Cyr') # bold
-        addMapping('Helvetica', 0, 1, 'Helvetica-Oblique-Cyr') # italic
-        addMapping('Helvetica', 1, 1, 'Helvetica-BoldOblique-Cyr') # bold italic
-        
-        cyrillic_fonts_available = True
-        logger.info("Cyrillic fonts registered successfully")
-        
-    except Exception as e:
-        # Если Helvetica с кириллицей не найден, используем встроенную поддержку
-        logger.warning(f"Could not register Helvetica-Cyr, using fallback: {e}")
-        cyrillic_fonts_available = False
-        
-        # Альтернатива: пробуем зарегистрировать DejaVu Sans (часто доступен в Linux)
-        try:
-            import os
-            font_paths = [
-                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-                '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-                '/System/Library/Fonts/Helvetica.ttc',
-                'C:/Windows/Fonts/arial.ttf'
-            ]
-            
-            for font_path in font_paths:
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
-                    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', font_path.replace('.ttf', '-Bold.ttf') if 'DejaVu' in font_path else font_path))
-                    addMapping('Helvetica', 0, 0, 'DejaVuSans')
-                    addMapping('Helvetica', 1, 0, 'DejaVuSans-Bold')
-                    cyrillic_fonts_available = True
-                    logger.info(f"Registered font from: {font_path}")
-                    break
-        except Exception as e2:
-            logger.warning(f"Could not register fallback font: {e2}")
+    # Регистрируем шрифт с поддержкой кириллицы
+    # Пробуем найти системный шрифт с кириллицей
+    import sys
+    import os
+    
+    font_found = False
+    
+    # Список возможных путей к шрифтам с кириллицей
+    font_paths = [
+        # Linux
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+        '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+        # macOS
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/System/Library/Fonts/Arial.ttf',
+        # Windows
+        'C:/Windows/Fonts/arial.ttf',
+        'C:/Windows/Fonts/times.ttf',
+    ]
+    
+    for font_path in font_paths:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(TTFont('RussianFont', font_path))
+                font_found = True
+                logger.info(f"Registered Russian font from: {font_path}")
+                break
+            except:
+                continue
+    
+    if not font_found:
+        # Если шрифт не найден, используем стандартный но с предупреждением
+        logger.warning("No Cyrillic font found, using default (may not display correctly)")
+        # Регистрируем встроенный шрифт Type 1 (не поддерживает кириллицу, но не вызовет ошибку)
+        pdfmetrics.registerFont(TTFont('RussianFont', 'Helvetica.afm'))
     
     def clean_text(text):
         if not text:
@@ -923,11 +916,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             text = text.decode('utf-8', 'ignore')
         import unicodedata
         text = unicodedata.normalize('NFC', str(text))
-        text = re.sub(r'<[^>]+>', '', text)
+        # Не удаляем кириллицу! Только опасные символы
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        # Оставляем русские и английские буквы, цифры и базовую пунктуацию
-        allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)\d]'
-        text = re.sub(allowed_pattern, '', text)
         return text
     
     buffer = io.BytesIO()
@@ -943,40 +933,37 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     styles = getSampleStyleSheet()
     
-    # Определяем базовое имя шрифта
-    base_font = 'Helvetica' if cyrillic_fonts_available else 'Times-Roman'
-    
-    # Кастомные стили с поддержкой кириллицы
+    # Стили с поддержкой кириллицы
     title_style = ParagraphStyle(
         'CustomTitle',
-        parent=styles['Heading1'],
+        parent=styles['Normal'],
         fontSize=22,
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=12,
         alignment=TA_CENTER,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
     subtitle_style = ParagraphStyle(
         'CustomSubtitle',
-        parent=styles['Heading2'],
+        parent=styles['Normal'],
         fontSize=14,
         textColor=colors.HexColor('#34495E'),
         spaceAfter=8,
         alignment=TA_CENTER,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
     topic_style = ParagraphStyle(
         'TopicStyle',
-        parent=styles['Heading3'],
+        parent=styles['Normal'],
         fontSize=16,
         textColor=colors.HexColor('#16A085'),
         spaceAfter=10,
         spaceBefore=15,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -986,7 +973,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=11,
         textColor=colors.HexColor('#2980B9'),
         spaceAfter=5,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -996,7 +983,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=3,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1006,7 +993,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#7F8C8D'),
         spaceAfter=3,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1016,7 +1003,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#27AE60'),
         spaceAfter=3,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1026,7 +1013,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=9,
         textColor=colors.HexColor('#2980B9'),
         spaceAfter=4,
-        fontName=base_font,
+        fontName='RussianFont',
         underline=True,
         encoding='utf-8'
     )
@@ -1038,7 +1025,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=20,
         alignment=TA_JUSTIFY,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1049,7 +1036,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#95A5A6'),
         spaceBefore=15,
         alignment=TA_CENTER,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1059,7 +1046,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=8,
         textColor=colors.HexColor('#BDC3C7'),
         alignment=TA_CENTER,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1070,7 +1057,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=20,
         alignment=TA_JUSTIFY,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1079,7 +1066,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         parent=styles['Normal'],
         fontSize=1,
         textColor=colors.white,
-        fontName=base_font,
+        fontName='RussianFont',
         encoding='utf-8'
     )
     
@@ -1158,7 +1145,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#667eea')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), base_font),
+        ('FONTNAME', (0, 0), (-1, 0), 'RussianFont'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F4F4')]),
@@ -1168,33 +1155,22 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== ОГЛАВЛЕНИЕ С ГИПЕРССЫЛКАМИ ==========
+    # ========== ОГЛАВЛЕНИЕ ==========
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
-    toc_links = []
-    
     for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
-        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
         link_text = f'{i}. {clean_text(topic)} — {len(articles)} статей'
-        toc_link = Paragraph(f'<a href="#{anchor_id}">{link_text}</a>', toc_style)
-        toc_links.append(toc_link)
-        toc_links.append(Spacer(1, 0.2*cm))
-    
-    story.extend(toc_links)
+        story.append(Paragraph(link_text, toc_style))
+        story.append(Spacer(1, 0.2*cm))
     
     if len(grouped_articles) > 30:
         story.append(Paragraph(f"... и {len(grouped_articles)-30} других тем", meta_style))
     
     story.append(PageBreak())
     
-    # ========== СТАТЬИ ПО ТЕМАМ С ЯКОРЯМИ ==========
-    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
-        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
-        
-        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', anchor_style)
-        story.append(anchor_para)
-        
+    # ========== СТАТЬИ ПО ТЕМАМ ==========
+    for topic, articles in grouped_articles.items():
         story.append(Paragraph(clean_text(topic), topic_style))
         story.append(Spacer(1, 0.3*cm))
         
