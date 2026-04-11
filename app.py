@@ -985,12 +985,38 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     if logo_path and os.path.exists(logo_path):
         try:
+            from PIL import Image as PILImage
+            
+            # Открываем изображение для получения исходных размеров
             pil_img = PILImage.open(logo_path)
-            pil_img.verify()
-            logo = Image(logo_path, width=160, height=80)
+            
+            # Получаем исходные размеры
+            original_width, original_height = pil_img.size
+            
+            # Закрываем изображение после получения размеров
+            pil_img.close()
+            
+            # Определяем максимальную ширину для логотипа (например, 180 пикселей)
+            max_width = 180
+            max_height = 100
+            
+            # Рассчитываем масштаб с сохранением пропорций
+            width_ratio = max_width / original_width
+            height_ratio = max_height / original_height
+            
+            # Берем минимальный коэффициент, чтобы логотип поместился в оба ограничения
+            scale_ratio = min(width_ratio, height_ratio)
+            
+            # Вычисляем новые размеры с сохранением пропорций
+            new_width = original_width * scale_ratio
+            new_height = original_height * scale_ratio
+            
+            # Создаем Image с рассчитанными размерами
+            logo = Image(logo_path, width=new_width, height=new_height)
             logo.hAlign = 'CENTER'
             story.append(logo)
             story.append(Spacer(1, 1*cm))
+            
         except Exception as e:
             logger.warning(f"Could not load logo: {e}")
     
@@ -1320,15 +1346,41 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     # ========== COVER PAGE ==========
     story.append(Spacer(1, 2*cm))
-    
+
     if logo_path and os.path.exists(logo_path):
         try:
+            from PIL import Image as PILImage
+            
+            # Открываем изображение для получения исходных размеров
             pil_img = PILImage.open(logo_path)
-            pil_img.verify()
-            logo = Image(logo_path, width=160, height=80)
+            
+            # Получаем исходные размеры
+            original_width, original_height = pil_img.size
+            
+            # Закрываем изображение после получения размеров
+            pil_img.close()
+            
+            # Определяем максимальную ширину для логотипа (например, 180 пикселей)
+            max_width = 180
+            max_height = 100
+            
+            # Рассчитываем масштаб с сохранением пропорций
+            width_ratio = max_width / original_width
+            height_ratio = max_height / original_height
+            
+            # Берем минимальный коэффициент, чтобы логотип поместился в оба ограничения
+            scale_ratio = min(width_ratio, height_ratio)
+            
+            # Вычисляем новые размеры с сохранением пропорций
+            new_width = original_width * scale_ratio
+            new_height = original_height * scale_ratio
+            
+            # Создаем Image с рассчитанными размерами
+            logo = Image(logo_path, width=new_width, height=new_height)
             logo.hAlign = 'CENTER'
             story.append(logo)
             story.append(Spacer(1, 1*cm))
+            
         except Exception as e:
             logger.warning(f"Could not load logo: {e}")
     
