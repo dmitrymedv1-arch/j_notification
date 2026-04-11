@@ -12,3 +12,4 @@ openpyxl
 networkx
 reportlab
 aiohttp
+joblib
