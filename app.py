@@ -1861,10 +1861,6 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                     app_logo_path: str = None) -> bytes:
     """Генерация PDF отчета на английском языке с иерархической группировкой"""
     
-    import tempfile
-    import atexit
-    from io import BytesIO
-    
     def clean_text(text):
         if not text:
             return ""
@@ -2079,21 +2075,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     # ========== COVER PAGE ==========
     story.append(Spacer(1, 2*cm))
 
-    # Логотип журнала (пользовательский)
+    # Логотип журнала (пользовательский) - ИСПРАВЛЕНО
+    journal_logo_added = False
     if logo_path and os.path.exists(logo_path):
-        temp_logo_path = None
         try:
-            # Создаем временный файл для логотипа
-            with open(logo_path, 'rb') as f:
-                img_data = f.read()
+            # Проверяем, что файл является валидным изображением
+            with PILImage.open(logo_path) as test_img:
+                test_img.verify()
             
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-                tmp_file.write(img_data)
-                temp_logo_path = tmp_file.name
-            
-            # Получаем размеры изображения
-            pil_img = PILImage.open(BytesIO(img_data))
-            original_width, original_height = pil_img.size
+            # Открываем заново для получения размеров (verify() закрывает файл)
+            with PILImage.open(logo_path) as pil_img:
+                original_width, original_height = pil_img.size
             
             max_width = 180
             max_height = 100
@@ -2105,20 +2097,19 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             new_width = original_width * scale_ratio
             new_height = original_height * scale_ratio
             
-            logo = Image(temp_logo_path, width=new_width, height=new_height)
+            # Используем Image напрямую с оригинальным путем
+            logo = Image(logo_path, width=new_width, height=new_height)
             logo.hAlign = 'CENTER'
             story.append(logo)
             story.append(Spacer(1, 1*cm))
+            journal_logo_added = True
+            logger.info(f"Journal logo loaded successfully from: {logo_path}")
             
         except Exception as e:
-            logger.warning(f"Could not load logo: {e}")
-        finally:
-            # Очищаем временный файл после использования
-            if temp_logo_path and os.path.exists(temp_logo_path):
-                try:
-                    os.unlink(temp_logo_path)
-                except:
-                    pass
+            logger.warning(f"Could not load journal logo from {logo_path}: {e}")
+    
+    if not journal_logo_added:
+        story.append(Spacer(1, 1*cm))
     
     story.append(Paragraph("Analytical Report", title_style))
     story.append(Paragraph(f"«{clean_text(journal_name)}»", subtitle_style))
@@ -2312,44 +2303,51 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
-    # ========== APP LOGO IN FOOTER ==========
-    if app_logo_path and os.path.exists(app_logo_path):
-        temp_app_logo_path = None
-        try:
-            # Создаем временный файл для логотипа приложения
-            with open(app_logo_path, 'rb') as f:
-                img_data = f.read()
-            
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-                tmp_file.write(img_data)
-                temp_app_logo_path = tmp_file.name
-            
-            # Получаем размеры изображения
-            pil_img = PILImage.open(BytesIO(img_data))
-            original_width, original_height = pil_img.size
-            
-            max_width = 80
-            max_height = 40
-            width_ratio = max_width / original_width
-            height_ratio = max_height / original_height
-            scale_ratio = min(width_ratio, height_ratio)
-            new_width = original_width * scale_ratio
-            new_height = original_height * scale_ratio
-            
-            footer_logo = Image(temp_app_logo_path, width=new_width, height=new_height)
-            footer_logo.hAlign = 'CENTER'
-            story.append(footer_logo)
-            story.append(Spacer(1, 0.3*cm))
-            
-        except Exception as e:
-            logger.warning(f"Could not load footer logo: {e}")
-        finally:
-            # Очищаем временный файл после использования
-            if temp_app_logo_path and os.path.exists(temp_app_logo_path):
-                try:
-                    os.unlink(temp_app_logo_path)
-                except:
-                    pass
+    # ========== APP LOGO IN FOOTER - ИСПРАВЛЕНО ==========
+    # Перебираем возможные пути к логотипу приложения
+    possible_paths = [
+        app_logo_path,  # Переданный путь
+        "logo.png",  # Текущая директория
+        "./logo.png",  # Относительный путь
+        os.path.join(os.path.dirname(__file__), "logo.png"),  # Абсолютный путь
+        os.path.join(os.getcwd(), "logo.png")  # Текущая рабочая директория
+    ]
+    
+    app_logo_added = False
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            try:
+                # Проверяем, что файл является валидным изображением
+                with PILImage.open(path) as test_img:
+                    test_img.verify()
+                
+                # Открываем заново для получения размеров
+                with PILImage.open(path) as pil_img:
+                    original_width, original_height = pil_img.size
+                
+                max_width = 80
+                max_height = 40
+                width_ratio = max_width / original_width
+                height_ratio = max_height / original_height
+                scale_ratio = min(width_ratio, height_ratio)
+                new_width = original_width * scale_ratio
+                new_height = original_height * scale_ratio
+                
+                # Используем Image напрямую
+                footer_logo = Image(path, width=new_width, height=new_height)
+                footer_logo.hAlign = 'CENTER'
+                story.append(footer_logo)
+                story.append(Spacer(1, 0.3*cm))
+                app_logo_added = True
+                logger.info(f"App logo loaded successfully from: {path}")
+                break
+                
+            except Exception as e:
+                logger.warning(f"Could not load app logo from {path}: {e}")
+                continue
+    
+    if not app_logo_added:
+        logger.warning("App logo not found in any expected location")
     
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Report generated using CTA Journal Analyzer Pro", footer_style))
