@@ -2698,7 +2698,7 @@ def main():
     
     logo_path = "logo.png"
     if os.path.exists(logo_path):
-        col1, col2, col3 = st.columns([1, 2, 1])
+        col1, col2, col3 = st.columns([1, 2, 10])
         with col2:
             st.image(logo_path, use_container_width=True)
             st.markdown(f"<p style='font-size: 1rem; color: #666; text-align: center; margin-top: 0.5rem;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
