@@ -1270,7 +1270,8 @@ def format_message_with_variables(message: str, journal_name: str, years_str: st
 # ============================================================================
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
-                    hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
+                    hierarchy: Dict, logo_path: str = None, custom_message: str = None,
+                    app_logo_path: str = None) -> bytes:
     """Генерация PDF отчета на русском языке с иерархической группировкой"""
 
     import hashlib                    
@@ -1767,7 +1768,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Spacer(1, 1*cm))
     
     # Добавляем логотип в футер, если он есть
-    if logo_path and os.path.exists(logo_path):
+    if app_logo_path and os.path.exists(app_logo_path):
         try:
             from PIL import Image as PILImage
             pil_img = PILImage.open(logo_path)
@@ -1801,7 +1802,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
 # ============================================================================
 
 def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int], 
-                    hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
+                    hierarchy: Dict, logo_path: str = None, custom_message: str = None,
+                    app_logo_path: str = None) -> bytes:
     """Генерация PDF отчета на английском языке с иерархической группировкой"""
     
     def clean_text(text):
@@ -2238,7 +2240,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Spacer(1, 1*cm))
     
     # Добавляем логотип в футер, если он есть
-    if logo_path and os.path.exists(logo_path):
+    if app_logo_path and os.path.exists(app_logo_path):
         try:
             from PIL import Image as PILImage
             pil_img = PILImage.open(logo_path)
@@ -2902,7 +2904,8 @@ def main():
                 # PDF English
                 pdf_en_data = generate_pdf_en(journal_name, journal_abbr, years, hierarchy, 
                                               st.session_state.journal_logo, 
-                                              st.session_state.custom_message_en)
+                                              st.session_state.custom_message_en,
+                                              app_logo_path="logo.png")
                 filename_en = generate_filename(journal_abbr, years, 'en', 'pdf')
                 st.download_button(
                     label="📄 PDF (English)",
@@ -2916,7 +2919,8 @@ def main():
                 # PDF Russian
                 pdf_ru_data = generate_pdf_ru(journal_name, journal_abbr, years, hierarchy, 
                                               st.session_state.journal_logo,
-                                              st.session_state.custom_message_ru)
+                                              st.session_state.custom_message_ru,
+                                              app_logo_path="logo.png")
                 filename_ru = generate_filename(journal_abbr, years, 'ru', 'pdf')
                 st.download_button(
                     label="📄 PDF (Русский)",
