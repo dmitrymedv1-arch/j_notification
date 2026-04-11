@@ -1573,7 +1573,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         default_msg = DEFAULT_MESSAGES['ru']['body']
         intro_text = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
     
-    story.append(Paragraph(intro_text, intro_style))
+    # Сохраняем переносы строк
+    intro_text_formatted = intro_text.replace('\n\n', '<br/><br/>').replace('\n', '<br/>')
+    story.append(Paragraph(intro_text_formatted, intro_style))
     
     story.append(Spacer(1, 1*cm))
     
@@ -2018,7 +2020,9 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         default_msg = DEFAULT_MESSAGES['en']['body']
         intro_text = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
     
-    story.append(Paragraph(intro_text, intro_style))
+    # Сохраняем переносы строк
+    intro_text_formatted = intro_text.replace('\n\n', '<br/><br/>').replace('\n', '<br/>')
+    story.append(Paragraph(intro_text_formatted, intro_style))
     
     story.append(Spacer(1, 1*cm))
     
