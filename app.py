@@ -1201,13 +1201,19 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
 
 def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int], 
                     grouped_articles: Dict[str, List[dict]], logo_path: str = None) -> bytes:
-    """Генерация PDF отчета на английском языке"""
+    """Генерация PDF отчета на английском языке с активным оглавлением"""
     
     def clean_text(text):
         if not text:
             return ""
+        if isinstance(text, bytes):
+            text = text.decode('utf-8', 'ignore')
+        import unicodedata
+        text = unicodedata.normalize('NFC', str(text))
         text = re.sub(r'<[^>]+>', '', text)
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)\d]'
+        text = re.sub(allowed_pattern, '', text)
         return text
     
     buffer = io.BytesIO()
@@ -1223,6 +1229,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     styles = getSampleStyleSheet()
     
+    # Кастомные стили
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -1289,6 +1296,16 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         fontName='Helvetica-Bold'
     )
     
+    toc_style = ParagraphStyle(
+        'TOCStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#2980B9'),
+        spaceAfter=4,
+        fontName='Helvetica',
+        underline=True
+    )
+    
     footer_style = ParagraphStyle(
         'FooterStyle',
         parent=styles['Normal'],
@@ -1334,8 +1351,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     • Can serve as a foundation for your future research<br/>
     • Citing these works strengthens scholarly dialogue in your field<br/><br/>
     We invite you to explore this selection and consider incorporating these works 
-    into your own research. Every citation acknowledges the contributions of 
-    colleagues and represents a step forward for the scientific community.
+    into your research. Every citation is not merely a reference — it's an acknowledgment 
+    of colleagues' contributions and a step forward for the scientific community.
     """
     
     story.append(Paragraph(intro_text, ParagraphStyle(
@@ -1376,34 +1393,60 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== TABLE OF CONTENTS ==========
+    # ========== TABLE OF CONTENTS WITH HYPERLINKS ==========
     story.append(Paragraph("Table of Contents", title_style))
     story.append(Spacer(1, 0.5*cm))
     
-    toc_items = []
-    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
-        toc_items.append(f"{i}. {clean_text(topic)} — {len(articles)} articles")
+    # Временный список для хранения ссылок оглавления
+    toc_links = []
     
-    toc_text = "<br/>".join(toc_items[:30])
-    story.append(Paragraph(toc_text, meta_style))
+    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
+        # Создаем уникальный идентификатор для якоря
+        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
+        
+        # Добавляем ссылку в оглавление
+        link_text = f'{i}. {clean_text(topic)} — {len(articles)} articles'
+        # Используем специальный тег <a> с именем якоря
+        toc_link = Paragraph(f'<a href="#{anchor_id}">{link_text}</a>', toc_style)
+        toc_links.append(toc_link)
+        toc_links.append(Spacer(1, 0.2*cm))
+    
+    # Добавляем все ссылки в story
+    story.extend(toc_links)
     
     if len(grouped_articles) > 30:
         story.append(Paragraph(f"... and {len(grouped_articles)-30} other topics", meta_style))
     
     story.append(PageBreak())
     
-    # ========== ARTICLES BY TOPIC ==========
-    for topic, articles in grouped_articles.items():
+    # ========== ARTICLES BY TOPIC WITH ANCHORS ==========
+    for i, (topic, articles) in enumerate(grouped_articles.items(), 1):
+        anchor_id = f"topic_{i}_{hashlib.md5(topic.encode()).hexdigest()[:8]}"
+        
+        # Добавляем якорь перед заголовком темы
+        # Используем невидимый элемент для ссылки
+        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle(
+            'AnchorStyle',
+            parent=styles['Normal'],
+            fontSize=1,
+            textColor=colors.white
+        ))
+        story.append(anchor_para)
+        
+        # Заголовок темы
         story.append(Paragraph(clean_text(topic), topic_style))
         story.append(Spacer(1, 0.3*cm))
         
         for idx, article in enumerate(articles, 1):
+            # Заголовок статьи
             title = clean_text(article.get('title', 'No title'))
             story.append(Paragraph(f"{idx}. {title}", article_title_style))
             
+            # Авторы
             authors = clean_text(article.get('authors', 'Authors not specified'))
             story.append(Paragraph(f"<b>Authors:</b> {authors}", authors_style))
             
+            # Метаданные
             journal = clean_text(article.get('journal_name', journal_name))
             year = article.get('publication_year', '')
             volume = article.get('volume', '')
@@ -1422,6 +1465,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
             story.append(Paragraph(", ".join(meta_parts), meta_style))
             
+            # Цитирования
             citations = article.get('cited_by_count', 0)
             citations_per_year = article.get('citations_per_year', 0)
             is_highly = article.get('is_highly_cited', False)
@@ -1432,6 +1476,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
             story.append(Paragraph(citation_text, citation_style))
             
+            # DOI ссылка
             doi_url = article.get('doi_url', '')
             if doi_url:
                 story.append(Paragraph(f"<b>DOI:</b> <link href='{doi_url}'>{doi_url}</link>", meta_style))
