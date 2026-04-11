@@ -2876,47 +2876,29 @@ def main():
             
             with st.expander(f"📝 {t['customize_message']} ({language})"):
                 if language == "English":
-                    # Используем значение из session_state для text_area
-                    current_msg = st.session_state.custom_message_en
-                    
-                    custom_msg = st.text_area(
+                    # Используем key для автоматической синхронизации с session_state
+                    st.text_area(
                         t['message_preview'],
-                        value=current_msg,
+                        value=st.session_state.custom_message_en,
                         height=300,
-                        key="msg_editor_en"
+                        key="custom_message_en"  # Ключ совпадает с именем в session_state
                     )
-                    
-                    col_reset1, col_spacer1 = st.columns([1, 5])
-                    with col_reset1:
-                        if st.button(t['use_default'], key="reset_en", use_container_width=True):
-                            st.session_state.custom_message_en = DEFAULT_MESSAGES['en']['body']
-                            st.session_state.msg_editor_en = DEFAULT_MESSAGES['en']['body']
-                            st.rerun()
+                    # Кнопка сброса - просто меняем значение в session_state
+                    if st.button(t['use_default'], key="reset_en"):
+                        st.session_state.custom_message_en = DEFAULT_MESSAGES['en']['body']
+                        st.rerun()
                 else:
-                    # Используем значение из session_state для text_area
-                    current_msg = st.session_state.custom_message_ru
-                    
-                    custom_msg = st.text_area(
+                    # Русская версия
+                    st.text_area(
                         t['message_preview'],
-                        value=current_msg,
+                        value=st.session_state.custom_message_ru,
                         height=300,
-                        key="msg_editor_ru"
+                        key="custom_message_ru"  # Ключ совпадает с именем в session_state
                     )
-                    
-                    col_reset2, col_spacer2 = st.columns([1, 5])
-                    with col_reset2:
-                        if st.button(t['use_default'], key="reset_ru", use_container_width=True):
-                            st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
-                            st.session_state.msg_editor_ru = DEFAULT_MESSAGES['ru']['body']
-                            st.rerun()
-                
-                # Сохраняем сообщение в session_state при изменении
-                if language == "English":
-                    if custom_msg != st.session_state.custom_message_en:
-                        st.session_state.custom_message_en = custom_msg
-                else:
-                    if custom_msg != st.session_state.custom_message_ru:
-                        st.session_state.custom_message_ru = custom_msg
+                    # Кнопка сброса - просто меняем значение в session_state
+                    if st.button(t['use_default'], key="reset_ru"):
+                        st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
+                        st.rerun()
             
             # Отображение иерархии в UI
             st.markdown("---")
@@ -2974,9 +2956,14 @@ def main():
                 st.markdown("**PDF Reports**")
                 
                 # PDF English
-                pdf_en_data = generate_pdf_en(journal_name, journal_abbr, years, hierarchy, 
-                                              st.session_state.journal_logo, 
-                                              st.session_state.custom_message_en)
+                pdf_en_data = generate_pdf_en(
+                    journal_name, 
+                    journal_abbr, 
+                    years, 
+                    hierarchy, 
+                    st.session_state.journal_logo, 
+                    st.session_state.custom_message_en
+                )
                 filename_en = generate_filename(journal_abbr, years, 'en', 'pdf')
                 st.download_button(
                     label="📄 PDF (English)",
@@ -2988,9 +2975,14 @@ def main():
                 )
                 
                 # PDF Russian
-                pdf_ru_data = generate_pdf_ru(journal_name, journal_abbr, years, hierarchy, 
-                                              st.session_state.journal_logo,
-                                              st.session_state.custom_message_ru)
+                pdf_ru_data = generate_pdf_ru(
+                    journal_name, 
+                    journal_abbr, 
+                    years, 
+                    hierarchy, 
+                    st.session_state.journal_logo,
+                    st.session_state.custom_message_ru
+                )
                 filename_ru = generate_filename(journal_abbr, years, 'ru', 'pdf')
                 st.download_button(
                     label="📄 PDF (Русский)",
@@ -3005,7 +2997,12 @@ def main():
                 st.markdown("**TXT Reports**")
                 
                 # TXT English
-                txt_en_data = generate_txt_en(journal_name, years, hierarchy, st.session_state.custom_message_en)
+                txt_en_data = generate_txt_en(
+                    journal_name, 
+                    years, 
+                    hierarchy, 
+                    st.session_state.custom_message_en
+                )
                 filename_en_txt = generate_filename(journal_abbr, years, 'en', 'txt')
                 st.download_button(
                     label="📝 TXT (English)",
@@ -3017,7 +3014,12 @@ def main():
                 )
                 
                 # TXT Russian
-                txt_ru_data = generate_txt_ru(journal_name, years, hierarchy, st.session_state.custom_message_ru)
+                txt_ru_data = generate_txt_ru(
+                    journal_name, 
+                    years, 
+                    hierarchy, 
+                    st.session_state.custom_message_ru
+                )
                 filename_ru_txt = generate_filename(journal_abbr, years, 'ru', 'txt')
                 st.download_button(
                     label="📝 TXT (Русский)",
