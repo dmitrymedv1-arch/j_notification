@@ -2592,7 +2592,7 @@ def main():
     # Заголовок
     if hasattr(st.session_state, 'app_logo') and st.session_state.app_logo is not None:
         # Центрируем логотип
-        col1, col2, col3 = st.columns([1, 2, 2])
+        col1, col2, col3 = st.columns([3, 3, 5])
         with col2:
             st.image(st.session_state.app_logo, use_container_width=True)
     else:
