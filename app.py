@@ -2590,16 +2590,14 @@ def main():
         st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
     
     # Заголовок
-    col_logo, col_title = st.columns([1, 5])
-    
-    with col_logo:
-        if hasattr(st.session_state, 'app_logo') and st.session_state.app_logo is not None:
-            st.image(st.session_state.app_logo, width=60)
-        else:
-            st.markdown("<div style='font-size: 40px;'>📚</div>", unsafe_allow_html=True)
-    
-    with col_title:
-        st.markdown(f"<h1 class='main-header' style='margin-top: 0; padding-top: 0;'>{t['app_title'].replace('📚 ', '')}</h1>", unsafe_allow_html=True)
+    if hasattr(st.session_state, 'app_logo') and st.session_state.app_logo is not None:
+        # Центрируем логотип
+        col1, col2, col3 = st.columns([1, 2, 2])
+        with col2:
+            st.image(st.session_state.app_logo, use_container_width=True)
+    else:
+        # Если логотипа нет, показываем заголовок как раньше
+        st.markdown(f"<h1 class='main-header'>{t['app_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1rem; color: #666; margin-bottom: 1.5rem;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
     
     # Очистка старого кэша
