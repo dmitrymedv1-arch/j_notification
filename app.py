@@ -1599,8 +1599,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         ["Показатель", "Значение"],
         ["Всего статей", str(total_articles)],
         ["Областей науки", str(total_domains)],
-        ["Всего цитирований", str(total_citations)],
-        ["Активно цитируемые статьи", str(highly_cited)]
+        ["Всего цитирований", str(total_citations)]
     ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
@@ -2071,8 +2070,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         ["Metric", "Value"],
         ["Total Articles", str(total_articles)],
         ["Research Domains", str(total_domains)],
-        ["Total Citations", str(total_citations)],
-        ["Highly Cited Articles", str(highly_cited)]
+        ["Total Citations", str(total_citations)]
     ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
