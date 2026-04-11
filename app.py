@@ -417,7 +417,7 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
         # OpenAlex использует ISSN-L или обычный ISSN
         url = f"{OPENALEX_BASE_URL}/sources"
         params = {
-            "filter": f"issn:{issn}",
+            "filter": f"issn:{issn_formatted}",
             "mailto": MAILTO
         }
         
@@ -538,7 +538,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     
     # Строим фильтр
     years_str = "|".join(map(str, years))
-    filter_str = f"source.id:{source_id},publication_year:{years_str}"
+    filter_str = f"primary_location.source.id:{source_id},publication_year:{years_str}"
     
     try:
         while True:
