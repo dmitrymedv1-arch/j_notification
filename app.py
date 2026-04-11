@@ -1157,37 +1157,45 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                    topic_avg_citations = topic_citations / topic_articles if topic_articles > 0 else 0
                     
                     topic_stats[topic] = {
                         'articles': topic_articles,
                         'citations': topic_citations,
+                        'avg_citations': round(topic_avg_citations, 1),
                         'articles_list': articles
                     }
                     
                     subfield_articles += topic_articles
                     subfield_citations += topic_citations
                 
+                subfield_avg_citations = subfield_citations / subfield_articles if subfield_articles > 0 else 0
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
                     'citations': subfield_citations,
+                    'avg_citations': round(subfield_avg_citations, 1),
                     'topics': topic_stats
                 }
                 
                 field_articles += subfield_articles
                 field_citations += subfield_citations
             
+            field_avg_citations = field_citations / field_articles if field_articles > 0 else 0
             field_stats[field] = {
                 'articles': field_articles,
                 'citations': field_citations,
+                'avg_citations': round(field_avg_citations, 1),
                 'subfields': subfield_stats
             }
             
             domain_articles += field_articles
             domain_citations += field_citations
         
+        domain_avg_citations = domain_citations / domain_articles if domain_articles > 0 else 0
         stats[domain] = {
             'articles': domain_articles,
             'citations': domain_citations,
+            'avg_citations': round(domain_avg_citations, 1),
             'fields': field_stats
         }
     
@@ -1616,7 +1624,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         domain_citations = domain_stats.get('citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований</a>', toc_domain_style))
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})</a>', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
@@ -1624,7 +1632,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             field_citations = field_stats.get('citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований', toc_field_style))
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})</a>', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
@@ -1632,7 +1640,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_citations = subfield_stats.get('citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований', toc_subfield_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})</a>', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -1643,12 +1651,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
-        anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
-        story.append(anchor_para)
-        
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований", domain_style))
+        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
@@ -1660,7 +1665,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
             story.append(field_anchor_para)
             
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований", field_style))
+            field_avg = field_stats.get('avg_citations', 0)
+            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
@@ -1672,14 +1678,16 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
                 story.append(subfield_anchor_para)
                 
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований", subfield_style))
+                subfield_avg = subfield_stats.get('avg_citations', 0)
+                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований", topic_style))
+                    topic_avg = topic_stats.get('avg_citations', 0) if 'topic_stats' in locals() else 0
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (ср. {topic_avg})", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -2121,7 +2129,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         domain_citations = domain_stats.get('citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations</a>', toc_domain_style))
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})</a>', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
@@ -2129,7 +2137,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             field_citations = field_stats.get('citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations', toc_field_style))
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg {field_avg})</a>', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
@@ -2137,7 +2145,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_citations = subfield_stats.get('citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations', toc_subfield_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})</a>', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -2153,7 +2161,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
         story.append(anchor_para)
         
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations", domain_style))
+        domain_avg = domain_stats.get('avg_citations', 0)
+        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
@@ -2165,7 +2174,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
             story.append(field_anchor_para)
             
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations", field_style))
+            field_avg = field_stats.get('avg_citations', 0)
+            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (avg {field_avg})", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
@@ -2177,7 +2187,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
                 story.append(subfield_anchor_para)
                 
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations", subfield_style))
+                subfield_avg = subfield_stats.get('avg_citations', 0)
+                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
@@ -2381,19 +2392,22 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований")
+        domain_avg = domain_stats.get('avg_citations', 0)
+        output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})")
         
         for field in fields.keys():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
-            output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований")
+            field_avg = field_stats.get('avg_citations', 0)
+            output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})")
             
             for subfield in fields[field].keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
-                output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований")
+                subfield_avg = subfield_stats.get('avg_citations', 0)
+                output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})")
     
     output.append("")
     output.append("=" * 80)
@@ -2549,19 +2563,22 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations")
+        domain_avg = domain_stats.get('avg_citations', 0)
+        output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})")
         
         for field in fields.keys():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
-            output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations")
+            field_avg = field_stats.get('avg_citations', 0)
+            output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations (avg {field_avg})")
             
             for subfield in fields[field].keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
-                output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations")
+                subfield_avg = subfield_stats.get('avg_citations', 0)
+                output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})")
     
     output.append("")
     output.append("=" * 80)
