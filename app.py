@@ -1133,6 +1133,7 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
             "domain_name": {
                 "articles": 100,
                 "citations": 5000,
+                "avg_citations": 50.0,
                 "fields": {...}
             }
         }
@@ -1161,6 +1162,7 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
                     topic_stats[topic] = {
                         'articles': topic_articles,
                         'citations': topic_citations,
+                        'avg_citations': topic_citations / topic_articles if topic_articles > 0 else 0,
                         'articles_list': articles
                     }
                     
@@ -1170,6 +1172,7 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
                     'citations': subfield_citations,
+                    'avg_citations': subfield_citations / subfield_articles if subfield_articles > 0 else 0,
                     'topics': topic_stats
                 }
                 
@@ -1179,6 +1182,7 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
             field_stats[field] = {
                 'articles': field_articles,
                 'citations': field_citations,
+                'avg_citations': field_citations / field_articles if field_articles > 0 else 0,
                 'subfields': subfield_stats
             }
             
@@ -1188,6 +1192,7 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
         stats[domain] = {
             'articles': domain_articles,
             'citations': domain_citations,
+            'avg_citations': domain_citations / domain_articles if domain_articles > 0 else 0,
             'fields': field_stats
         }
     
@@ -1256,7 +1261,7 @@ def format_message_with_variables(message: str, journal_name: str, years_str: st
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
                     hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
-    """Генерация PDF отчета на русском языке с иерархической группировкой"""
+    """Генерация PDF отчета на русском языке с иерархической группировкой и средней цитируемостью"""
 
     import hashlib                    
     from reportlab.pdfbase import pdfmetrics
@@ -1271,7 +1276,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     # Список возможных путей к шрифтам с кириллицей
     font_paths = [
-        # Linux (Streamlit Cloud)
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
@@ -1279,11 +1283,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
         '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
         '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-        # macOS
         '/System/Library/Fonts/Helvetica.ttc',
         '/System/Library/Fonts/Arial.ttf',
         '/Library/Fonts/Arial.ttf',
-        # Windows
         'C:/Windows/Fonts/arial.ttf',
         'C:/Windows/Fonts/times.ttf',
     ]
@@ -1588,6 +1590,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         ["Всего статей", str(total_articles)],
         ["Областей науки", str(total_domains)],
         ["Всего цитирований", str(total_citations)],
+        ["Средняя цитируемость", f"{total_citations/total_articles:.2f}" if total_articles > 0 else "0"],
         ["Активно цитируемые статьи", str(highly_cited)]
     ]
     
@@ -1614,25 +1617,28 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований</a>', toc_domain_style))
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})</a>', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
+            field_avg = field_stats.get('avg_citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований', toc_field_style))
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований', toc_subfield_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -1643,43 +1649,47 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
         story.append(anchor_para)
         
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований", domain_style))
+        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
+            field_avg = field_stats.get('avg_citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
             story.append(field_anchor_para)
             
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований", field_style))
+            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
                 story.append(subfield_anchor_para)
                 
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований", subfield_style))
+                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований", topic_style))
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -1739,11 +1749,13 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph("Заключение", title_style))
     story.append(Spacer(1, 0.5*cm))
     
+    avg_overall = total_citations / total_articles if total_articles > 0 else 0
+    
     conclusion_text = f"""
     Данный отчет содержит {total_articles} статей из журнала «{clean_text(journal_name)}», 
     сгруппированных по иерархической структуре: {total_domains} областей науки, 
-    включающих множество полей и подполей. Из них {highly_cited} статей 
-    являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>
+    включающих множество полей и подполей. Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.
+    Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>
     
     Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» — 
     они демонстрируют высокий научный интерес и могут стать важной частью Вашего исследования.<br/><br/>
@@ -1757,13 +1769,12 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В КОНЦЕ ==========
     try:
-        # Проверяем, есть ли логотип приложения в директории
         possible_paths = [
-            "logo.png",  # Текущая директория
-            "./logo.png",  # Относительный путь
-            "app/logo.png",  # Если в поддиректории
-            os.path.join(os.path.dirname(__file__), "logo.png"),  # Абсолютный путь
-            os.path.join(os.getcwd(), "logo.png")  # Текущая рабочая директория
+            "logo.png",
+            "./logo.png",
+            "app/logo.png",
+            os.path.join(os.path.dirname(__file__), "logo.png"),
+            os.path.join(os.getcwd(), "logo.png")
         ]
         
         app_logo_path = None
@@ -1773,20 +1784,17 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 break
         
         if app_logo_path:
-            # Проверяем с помощью PIL
             from PIL import Image as PILImage
             pil_img = PILImage.open(app_logo_path)
             pil_img.verify()
             pil_img.close()
             
-            # Используем Image из reportlab
             app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
             logger.info(f"App logo loaded successfully from: {app_logo_path}")
         else:
-            # Если логотип не найден, показываем эмодзи
             story.append(Paragraph("📚", ParagraphStyle(
                 'LogoEmoji',
                 parent=styles['Normal'],
@@ -1799,7 +1807,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             
     except Exception as e:
         logger.error(f"Could not load app logo: {e}")
-        # Если логотип не загрузился, показываем эмодзи
         story.append(Paragraph("📚", ParagraphStyle(
             'LogoEmoji',
             parent=styles['Normal'],
@@ -1822,7 +1829,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
 
 def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int], 
                     hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
-    """Генерация PDF отчета на английском языке с иерархической группировкой"""
+    """Генерация PDF отчета на английском языке с иерархической группировкой и средней цитируемостью"""
     
     def clean_text(text):
         if not text:
@@ -2089,11 +2096,14 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
+    avg_overall = total_citations / total_articles if total_articles > 0 else 0
+    
     stats_data = [
         ["Metric", "Value"],
         ["Total Articles", str(total_articles)],
         ["Research Domains", str(total_domains)],
         ["Total Citations", str(total_citations)],
+        ["Average Citations per Article", f"{avg_overall:.2f}"],
         ["Highly Cited Articles", str(highly_cited)]
     ]
     
@@ -2119,25 +2129,28 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations</a>', toc_domain_style))
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})</a>', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
+            field_avg = field_stats.get('avg_citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations', toc_field_style))
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations', toc_subfield_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -2148,43 +2161,47 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
         story.append(anchor_para)
         
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations", domain_style))
+        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
+            field_avg = field_stats.get('avg_citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
             story.append(field_anchor_para)
             
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations", field_style))
+            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
                 story.append(subfield_anchor_para)
                 
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations", subfield_style))
+                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations", topic_style))
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -2247,8 +2264,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     conclusion_text = f"""
     This report contains {total_articles} articles from «{clean_text(journal_name)}», 
     grouped into a hierarchical structure: {total_domains} research domains, 
-    encompassing multiple fields and subfields. Among them, {highly_cited} articles 
-    are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>
+    encompassing multiple fields and subfields. The overall average citation rate is {avg_overall:.2f} citations per article.
+    Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>
     
     We recommend paying special attention to articles marked as "Highly Cited" — 
     they demonstrate significant scientific interest and can become an important part 
@@ -2327,7 +2344,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
 # ============================================================================
 
 def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None) -> str:
-    """Генерация TXT отчета на русском языке с иерархической группировкой"""
+    """Генерация TXT отчета на русском языке с иерархической группировкой и средней цитируемостью"""
     
     output = []
     
@@ -2364,11 +2381,14 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("")
     
     # Статистика
+    avg_overall = total_citations / total_articles if total_articles > 0 else 0
+    
     output.append("СТАТИСТИКА")
     output.append("-" * 40)
     output.append(f"Всего статей: {total_articles}")
     output.append(f"Областей науки: {total_domains}")
     output.append(f"Всего цитирований: {total_citations}")
+    output.append(f"Средняя цитируемость: {avg_overall:.2f}")
     output.append(f"Активно цитируемые статьи: {highly_cited}")
     output.append("")
     output.append("=" * 80)
@@ -2381,19 +2401,22 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований")
+        domain_avg = domain_stats.get('avg_citations', 0)
+        output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
         
         for field in fields.keys():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
-            output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований")
+            field_avg = field_stats.get('avg_citations', 0)
+            output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})")
             
             for subfield in fields[field].keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
-                output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований")
+                subfield_avg = subfield_stats.get('avg_citations', 0)
+                output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})")
     
     output.append("")
     output.append("=" * 80)
@@ -2404,10 +2427,11 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         output.append("")
         output.append("█" * 80)
-        output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей, {domain_citations} цитирований")
+        output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
         output.append("█" * 80)
         output.append("")
         
@@ -2415,23 +2439,26 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
+            field_avg = field_stats.get('avg_citations', 0)
             
-            output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей, {field_citations} цитирований ▓▓▓")
+            output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f}) ▓▓▓")
             output.append("")
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей, {subfield_citations} цитирований ▒▒▒")
+                output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f}) ▒▒▒")
                 output.append("")
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей, {topic_citations} цитирований")
+                    output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})")
                     output.append("")
                     
                     for idx, article in enumerate(articles, 1):
@@ -2475,8 +2502,8 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("")
     output.append(f"Данный отчет содержит {total_articles} статей из журнала «{journal_name}»,")
     output.append(f"сгруппированных по иерархической структуре: {total_domains} областей науки,")
-    output.append(f"включающих множество полей и подполей. Из них {highly_cited} статей")
-    output.append("являются активно цитируемыми, что делает их особенно ценными для включения")
+    output.append(f"включающих множество полей и подполей. Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.")
+    output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     output.append("в Ваши научные работы.")
     output.append("")
     output.append("Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» —")
@@ -2495,7 +2522,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
 # ============================================================================
 
 def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None) -> str:
-    """Генерация TXT отчета на английском языке с иерархической группировкой"""
+    """Генерация TXT отчета на английском языке с иерархической группировкой и средней цитируемостью"""
     
     output = []
     
@@ -2537,6 +2564,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append(f"Total Articles: {total_articles}")
     output.append(f"Research Domains: {total_domains}")
     output.append(f"Total Citations: {total_citations}")
+    output.append(f"Average Citations per Article: {total_citations/total_articles:.2f}" if total_articles > 0 else "Average Citations per Article: 0")
     output.append(f"Highly Cited Articles: {highly_cited}")
     output.append("")
     output.append("=" * 80)
@@ -2549,19 +2577,22 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations")
+        domain_avg = domain_stats.get('avg_citations', 0)
+        output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
         
         for field in fields.keys():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
-            output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations")
+            field_avg = field_stats.get('avg_citations', 0)
+            output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})")
             
             for subfield in fields[field].keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
-                output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations")
+                subfield_avg = subfield_stats.get('avg_citations', 0)
+                output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})")
     
     output.append("")
     output.append("=" * 80)
@@ -2572,10 +2603,11 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         output.append("")
         output.append("█" * 80)
-        output.append(f"DOMAIN: {domain} — {domain_articles} articles, {domain_citations} citations")
+        output.append(f"DOMAIN: {domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
         output.append("█" * 80)
         output.append("")
         
@@ -2583,23 +2615,26 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
+            field_avg = field_stats.get('avg_citations', 0)
             
-            output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles, {field_citations} citations ▓▓▓")
+            output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f}) ▓▓▓")
             output.append("")
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles, {subfield_citations} citations ▒▒▒")
+                output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f}) ▒▒▒")
                 output.append("")
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    output.append(f"  ● TOPIC: {topic} — {topic_articles} articles, {topic_citations} citations")
+                    output.append(f"  ● TOPIC: {topic} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})")
                     output.append("")
                     
                     for idx, article in enumerate(articles, 1):
@@ -2641,10 +2676,13 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("CONCLUSION")
     output.append("=" * 80)
     output.append("")
+    
+    avg_overall = total_citations / total_articles if total_articles > 0 else 0
+    
     output.append(f"This report contains {total_articles} articles from «{journal_name}»,")
     output.append(f"grouped into a hierarchical structure: {total_domains} research domains,")
-    output.append(f"encompassing multiple fields and subfields. Among them, {highly_cited} articles")
-    output.append("are highly cited, making them particularly valuable for inclusion in your research.")
+    output.append(f"encompassing multiple fields and subfields. The overall average citation rate is {avg_overall:.2f} citations per article.")
+    output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     output.append("")
     output.append("We recommend paying special attention to articles marked as 'Highly Cited' —")
     output.append("they demonstrate significant scientific interest and can become an important part")
