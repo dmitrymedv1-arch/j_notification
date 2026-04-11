@@ -1625,7 +1625,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         domain_avg = domain_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
         
         anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})</a>', toc_domain_style))
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
@@ -1634,7 +1634,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             field_avg = field_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})</a>', toc_field_style))
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
@@ -1643,7 +1643,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_avg = subfield_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})</a>', toc_subfield_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -2133,7 +2133,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         domain_avg = domain_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})</a>', toc_domain_style))
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
@@ -2142,7 +2142,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             field_avg = field_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg {field_avg})</a>', toc_field_style))
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg {field_avg})', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
@@ -2151,7 +2151,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_avg = subfield_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})</a>', toc_subfield_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
