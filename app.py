@@ -691,14 +691,43 @@ def enrich_article_data(article: dict) -> dict:
     elif last_page:
         pages_str = last_page
     
-    # Извлекаем авторов
+    # Извлекаем авторов с правильной обработкой кириллицы
     authorships = article.get('authorships', [])
     authors = []
+    
     for authorship in authorships[:10]:  # Максимум 10 авторов
         if authorship:
-            author = authorship.get('author', {})
-            if author:
-                author_name = author.get('display_name', '')
+            # Пробуем несколько вариантов получения имени автора
+            author_name = ''
+            
+            # Вариант 1: raw_author_name (оригинальное написание)
+            if 'raw_author_name' in authorship:
+                author_name = authorship.get('raw_author_name', '')
+            
+            # Вариант 2: через author.display_name
+            if not author_name:
+                author = authorship.get('author', {})
+                if author:
+                    author_name = author.get('display_name', '')
+            
+            # Вариант 3: напрямую из author
+            if not author_name and 'author' in authorship:
+                author_obj = authorship['author']
+                if isinstance(author_obj, dict):
+                    author_name = author_obj.get('display_name', '')
+            
+            if author_name:
+                # Нормализуем Unicode
+                import unicodedata
+                author_name = unicodedata.normalize('NFC', str(author_name))
+                
+                # Очищаем от проблемных символов, но сохраняем кириллицу
+                # Разрешенные символы: буквы (рус/англ), пробелы, точки, запятые, дефисы, скобки
+                author_name = re.sub(r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)]', '', author_name)
+                
+                # Убираем лишние пробелы
+                author_name = re.sub(r'\s+', ' ', author_name).strip()
+                
                 if author_name:
                     authors.append(author_name)
     
@@ -720,6 +749,17 @@ def enrich_article_data(article: dict) -> dict:
     # Рассчитываем метрики цитирования
     citations_total, citations_per_year, is_highly_cited = calculate_citation_activity(article)
     
+    # Получаем информацию об источнике (журнале)
+    journal_name = ''
+    primary_location = article.get('primary_location')
+    if primary_location:
+        source = primary_location.get('source', {})
+        if source:
+            journal_name = source.get('display_name', '')
+            if not journal_name:
+                host_venue = article.get('host_venue', {})
+                journal_name = host_venue.get('display_name', '')
+    
     enriched = {
         'doi': doi_clean,
         'doi_url': f"https://doi.org/{doi_clean}" if doi_clean else '',
@@ -731,7 +771,7 @@ def enrich_article_data(article: dict) -> dict:
         'is_highly_cited': is_highly_cited,
         'authors': authors_str,
         'authors_list': authors,
-        'journal_name': '',
+        'journal_name': journal_name,
         'volume': volume,
         'issue': issue,
         'pages': pages_str,
@@ -740,17 +780,6 @@ def enrich_article_data(article: dict) -> dict:
         'type': article.get('type', ''),
         'is_oa': article.get('open_access', {}).get('is_oa', False) if article.get('open_access') else False
     }
-    
-    # Получаем информацию об источнике (журнале)
-    primary_location = article.get('primary_location')
-    if primary_location:
-        source = primary_location.get('source', {})
-        if source:
-            enriched['journal_name'] = source.get('display_name', '')
-            if not enriched['journal_name']:
-                # Fallback на host_venue
-                host_venue = article.get('host_venue', {})
-                enriched['journal_name'] = host_venue.get('display_name', '')
     
     return enriched
 
