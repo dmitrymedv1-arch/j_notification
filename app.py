@@ -1540,8 +1540,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             original_width, original_height = pil_img.size
             pil_img.close()
             
-            max_width = 180
-            max_height = 100
+            max_width = 250
+            max_height = 200
             
             width_ratio = max_width / original_width
             height_ratio = max_height / original_height
@@ -2040,8 +2040,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             original_width, original_height = pil_img.size
             pil_img.close()
             
-            max_width = 180
-            max_height = 100
+            max_width = 250
+            max_height = 200
             
             width_ratio = max_width / original_width
             height_ratio = max_height / original_height
