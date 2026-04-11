@@ -1265,6 +1265,81 @@ def format_message_with_variables(message: str, journal_name: str, years_str: st
     message = message.replace('YEARS', years_str)
     return message
 
+
+# ============================================================================
+# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ДОБАВЛЕНИЯ ИЗОБРАЖЕНИЙ В PDF
+# ============================================================================
+
+def add_image_to_story(story, image_source, max_width=180, max_height=100, is_app_logo=False):
+    """
+    Универсальная функция для добавления изображения в story.
+    
+    image_source может быть:
+      - str (путь к файлу)
+      - bytes (байты изображения)
+    """
+    if not image_source:
+        return False
+    
+    temp_path = None
+    try:
+        # Если переданы байты
+        if isinstance(image_source, (bytes, bytearray)):
+            img_data = image_source
+        # Если передан путь к файлу
+        elif isinstance(image_source, str) and os.path.exists(image_source):
+            with open(image_source, 'rb') as f:
+                img_data = f.read()
+        else:
+            logger.warning(f"Image source not found or invalid: {image_source}")
+            return False
+
+        # Проверяем валидность изображения через PIL
+        try:
+            pil_img = PILImage.open(io.BytesIO(img_data))
+            pil_img.verify()
+            original_width, original_height = pil_img.size
+        except Exception as img_error:
+            logger.warning(f"Invalid image data: {img_error}")
+            return False
+
+        # Создаём временный файл (ReportLab лучше работает с файлами на диске)
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            tmp_file.write(img_data)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())  # Гарантируем запись на диск
+            temp_path = tmp_file.name
+
+        # Рассчитываем размеры с сохранением пропорций
+        width_ratio = max_width / original_width
+        height_ratio = max_height / original_height
+        scale_ratio = min(width_ratio, height_ratio)
+        
+        new_width = original_width * scale_ratio
+        new_height = original_height * scale_ratio
+
+        # Добавляем изображение в story
+        logo = Image(temp_path, width=new_width, height=new_height)
+        logo.hAlign = 'CENTER'
+        story.append(logo)
+        
+        # Добавляем отступ
+        story.append(Spacer(1, 1*cm if not is_app_logo else 0.5*cm))
+        
+        logger.info(f"Successfully added image to PDF (size: {new_width:.1f}x{new_height:.1f})")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error adding image to PDF: {str(e)}")
+        return False
+    finally:
+        # Удаляем временный файл
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Could not delete temp image file: {cleanup_error}")
+
 # ============================================================================
 # ГЕНЕРАЦИЯ PDF ОТЧЕТА (РУССКИЙ) С ИЕРАРХИЕЙ
 # ============================================================================
@@ -1274,23 +1349,15 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                     app_logo_path: str = None) -> bytes:
     """Генерация PDF отчета на русском языке с иерархической группировкой"""
 
-    import hashlib                    
+    import hashlib
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.fonts import addMapping
     import tempfile
-    import atexit
     from io import BytesIO
-    
+
     # Регистрируем шрифт с поддержкой кириллицы
-    import os
-    
-    font_found = False
     russian_font_name = 'Helvetica'  # fallback
-    
-    # Список возможных путей к шрифтам с кириллицей
     font_paths = [
-        # Linux (Streamlit Cloud)
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
@@ -1298,11 +1365,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
         '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
         '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-        # macOS
-        '/System/Library/Fonts/Helvetica.ttc',
-        '/System/Library/Fonts/Arial.ttf',
-        '/Library/Fonts/Arial.ttf',
-        # Windows
         'C:/Windows/Fonts/arial.ttf',
         'C:/Windows/Fonts/times.ttf',
     ]
@@ -1312,17 +1374,12 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             try:
                 pdfmetrics.registerFont(TTFont('RussianFont', font_path))
                 russian_font_name = 'RussianFont'
-                font_found = True
-                print(f"Registered Russian font from: {font_path}")
+                logger.info(f"Registered Russian font from: {font_path}")
                 break
             except Exception as e:
-                print(f"Failed to register {font_path}: {e}")
+                logger.warning(f"Failed to register font {font_path}: {e}")
                 continue
-    
-    if not font_found:
-        print("WARNING: No Cyrillic font found, text may not display correctly")
-        russian_font_name = 'Helvetica'
-    
+
     def clean_text(text):
         if not text:
             return ""
@@ -1332,7 +1389,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         text = unicodedata.normalize('NFC', str(text))
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         return text
-    
+
     # Рассчитываем статистику
     stats = calculate_hierarchy_statistics(hierarchy)
     total_articles = sum(s['articles'] for s in stats.values())
@@ -1343,7 +1400,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                       for subfield in field.values()
                       for topic in subfield.values()
                       for a in topic if a.get('is_highly_cited', False))
-    
+
     buffer = io.BytesIO()
     
     doc = SimpleDocTemplate(
@@ -1551,41 +1608,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     # ========== ТИТУЛЬНАЯ СТРАНИЦА ==========
     story.append(Spacer(1, 2*cm))
     
-    # Логотип журнала (пользовательский) - ИСПРАВЛЕНО
-    journal_logo_added = False
-    if logo_path and os.path.exists(logo_path):
-        try:
-            # Проверяем, что файл является валидным изображением
-            with PILImage.open(logo_path) as test_img:
-                test_img.verify()
-            
-            # Открываем заново для получения размеров (verify() закрывает файл)
-            with PILImage.open(logo_path) as pil_img:
-                original_width, original_height = pil_img.size
-            
-            max_width = 180
-            max_height = 100
-            
-            width_ratio = max_width / original_width
-            height_ratio = max_height / original_height
-            scale_ratio = min(width_ratio, height_ratio)
-            
-            new_width = original_width * scale_ratio
-            new_height = original_height * scale_ratio
-            
-            # Используем Image напрямую с оригинальным путем
-            logo = Image(logo_path, width=new_width, height=new_height)
-            logo.hAlign = 'CENTER'
-            story.append(logo)
-            story.append(Spacer(1, 1*cm))
-            journal_logo_added = True
-            logger.info(f"Journal logo loaded successfully from: {logo_path}")
-            
-        except Exception as e:
-            logger.warning(f"Could not load journal logo from {logo_path}: {e}")
-    
-    if not journal_logo_added:
-        story.append(Spacer(1, 1*cm))
+    # Логотип журнала (пользовательский)
+    if logo_path:
+        add_image_to_story(story, logo_path, max_width=180, max_height=100)
     
     story.append(Paragraph("Аналитический отчет", title_style))
     story.append(Paragraph(f"«{clean_text(journal_name)}»", subtitle_style))
@@ -1779,51 +1804,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
-    # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В ФУТЕРЕ - ИСПРАВЛЕНО ==========
-    # Перебираем возможные пути к логотипу приложения
-    possible_paths = [
-        app_logo_path,  # Переданный путь
-        "logo.png",  # Текущая директория
-        "./logo.png",  # Относительный путь
-        os.path.join(os.path.dirname(__file__), "logo.png"),  # Абсолютный путь
-        os.path.join(os.getcwd(), "logo.png")  # Текущая рабочая директория
-    ]
-    
-    app_logo_added = False
-    for path in possible_paths:
-        if path and os.path.exists(path):
-            try:
-                # Проверяем, что файл является валидным изображением
-                with PILImage.open(path) as test_img:
-                    test_img.verify()
-                
-                # Открываем заново для получения размеров
-                with PILImage.open(path) as pil_img:
-                    original_width, original_height = pil_img.size
-                
-                max_width = 80
-                max_height = 40
-                width_ratio = max_width / original_width
-                height_ratio = max_height / original_height
-                scale_ratio = min(width_ratio, height_ratio)
-                new_width = original_width * scale_ratio
-                new_height = original_height * scale_ratio
-                
-                # Используем Image напрямую
-                footer_logo = Image(path, width=new_width, height=new_height)
-                footer_logo.hAlign = 'CENTER'
-                story.append(footer_logo)
-                story.append(Spacer(1, 0.3*cm))
-                app_logo_added = True
-                logger.info(f"App logo loaded successfully from: {path}")
-                break
-                
-            except Exception as e:
-                logger.warning(f"Could not load app logo from {path}: {e}")
-                continue
-    
-    if not app_logo_added:
-        logger.warning("App logo not found in any expected location")
+    # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В ФУТЕРЕ ==========
+    if app_logo_path:
+        add_image_to_story(story, app_logo_path, max_width=80, max_height=40, is_app_logo=True)
     
     story.append(Paragraph(f"© {clean_text(journal_name)} | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
     story.append(Paragraph("Отчет подготовлен с использованием CTA Journal Analyzer Pro", footer_style))
