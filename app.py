@@ -1262,55 +1262,9 @@ def format_message_with_variables(message: str, journal_name: str, years_str: st
 # ГЕНЕРАЦИЯ PDF ОТЧЕТА (РУССКИЙ) С ИЕРАРХИЕЙ
 # ============================================================================
 
-def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
+def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int], 
                     hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
-    """Генерация PDF отчета на русском языке с иерархической группировкой"""
-
-    import hashlib                    
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.fonts import addMapping
-    
-    # Регистрируем шрифт с поддержкой кириллицы
-    import os
-    
-    font_found = False
-    russian_font_name = 'Helvetica'  # fallback
-    
-    # Список возможных путей к шрифтам с кириллицей
-    font_paths = [
-        # Linux (Streamlit Cloud)
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-        '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf',
-        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
-        '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
-        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
-        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-        # macOS
-        '/System/Library/Fonts/Helvetica.ttc',
-        '/System/Library/Fonts/Arial.ttf',
-        '/Library/Fonts/Arial.ttf',
-        # Windows
-        'C:/Windows/Fonts/arial.ttf',
-        'C:/Windows/Fonts/times.ttf',
-    ]
-    
-    for font_path in font_paths:
-        if os.path.exists(font_path):
-            try:
-                pdfmetrics.registerFont(TTFont('RussianFont', font_path))
-                russian_font_name = 'RussianFont'
-                font_found = True
-                print(f"Registered Russian font from: {font_path}")
-                break
-            except Exception as e:
-                print(f"Failed to register {font_path}: {e}")
-                continue
-    
-    if not font_found:
-        print("WARNING: No Cyrillic font found, text may not display correctly")
-        russian_font_name = 'Helvetica'
+    """Генерация PDF отчета на английском языке с иерархической группировкой"""
     
     def clean_text(text):
         if not text:
@@ -1319,7 +1273,10 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             text = text.decode('utf-8', 'ignore')
         import unicodedata
         text = unicodedata.normalize('NFC', str(text))
+        text = re.sub(r'<[^>]+>', '', text)
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)\d]'
+        text = re.sub(allowed_pattern, '', text)
         return text
     
     # Рассчитываем статистику
@@ -1346,38 +1303,35 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     styles = getSampleStyleSheet()
     
-    # Стили с поддержкой кириллицы
+    # Кастомные стили
     title_style = ParagraphStyle(
         'CustomTitle',
-        parent=styles['Normal'],
+        parent=styles['Heading1'],
         fontSize=22,
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=12,
         alignment=TA_CENTER,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     subtitle_style = ParagraphStyle(
         'CustomSubtitle',
-        parent=styles['Normal'],
+        parent=styles['Heading2'],
         fontSize=14,
         textColor=colors.HexColor('#34495E'),
         spaceAfter=8,
         alignment=TA_CENTER,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     domain_style = ParagraphStyle(
         'DomainStyle',
-        parent=styles['Normal'],
+        parent=styles['Heading3'],
         fontSize=18,
         textColor=colors.HexColor('#667eea'),
         spaceAfter=10,
         spaceBefore=20,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     field_style = ParagraphStyle(
@@ -1388,8 +1342,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         spaceAfter=8,
         spaceBefore=12,
         leftIndent=20,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     subfield_style = ParagraphStyle(
@@ -1400,8 +1353,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         spaceAfter=8,
         spaceBefore=10,
         leftIndent=40,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     topic_style = ParagraphStyle(
@@ -1412,8 +1364,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         spaceAfter=8,
         spaceBefore=8,
         leftIndent=60,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     article_title_style = ParagraphStyle(
@@ -1423,8 +1374,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=5,
         leftIndent=80,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     authors_style = ParagraphStyle(
@@ -1434,8 +1384,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=3,
         leftIndent=80,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     meta_style = ParagraphStyle(
@@ -1445,8 +1394,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#7F8C8D'),
         spaceAfter=3,
         leftIndent=80,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     citation_style = ParagraphStyle(
@@ -1456,8 +1404,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#27AE60'),
         spaceAfter=3,
         leftIndent=80,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     toc_domain_style = ParagraphStyle(
@@ -1466,8 +1413,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=12,
         textColor=colors.HexColor('#667eea'),
         spaceAfter=6,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Bold'
     )
     
     toc_field_style = ParagraphStyle(
@@ -1477,8 +1423,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#764ba2'),
         spaceAfter=4,
         leftIndent=15,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     toc_subfield_style = ParagraphStyle(
@@ -1488,8 +1433,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#16A085'),
         spaceAfter=3,
         leftIndent=30,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     intro_style = ParagraphStyle(
@@ -1499,8 +1443,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=20,
         alignment=TA_JUSTIFY,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     footer_style = ParagraphStyle(
@@ -1510,8 +1453,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#95A5A6'),
         spaceBefore=15,
         alignment=TA_CENTER,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica-Oblique'
     )
     
     separator_style = ParagraphStyle(
@@ -1520,8 +1462,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         fontSize=8,
         textColor=colors.HexColor('#BDC3C7'),
         alignment=TA_CENTER,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     conclusion_style = ParagraphStyle(
@@ -1531,15 +1472,14 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         textColor=colors.HexColor('#2C3E50'),
         spaceAfter=20,
         alignment=TA_JUSTIFY,
-        fontName=russian_font_name,
-        encoding='utf-8'
+        fontName='Helvetica'
     )
     
     story = []
     
-    # ========== ТИТУЛЬНАЯ СТРАНИЦА ==========
+    # ========== COVER PAGE ==========
     story.append(Spacer(1, 2*cm))
-    
+
     if logo_path and os.path.exists(logo_path):
         try:
             from PIL import Image as PILImage
@@ -1564,21 +1504,21 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             story.append(Spacer(1, 1*cm))
             
         except Exception as e:
-            print(f"Could not load logo: {e}")
+            logger.warning(f"Could not load logo: {e}")
     
-    story.append(Paragraph("Аналитический отчет", title_style))
+    story.append(Paragraph("Analytical Report", title_style))
     story.append(Paragraph(f"«{clean_text(journal_name)}»", subtitle_style))
     story.append(Spacer(1, 1*cm))
     
     years_str = format_year_filter_for_filename(years)
-    story.append(Paragraph(f"Период публикации: {years_str}", subtitle_style))
+    story.append(Paragraph(f"Publication period: {years_str}", subtitle_style))
     story.append(Spacer(1, 1.5*cm))
     
     # Настраиваемый текст или стандартный
     if custom_message:
         intro_text_raw = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
     else:
-        default_msg = DEFAULT_MESSAGES['ru']['body']
+        default_msg = DEFAULT_MESSAGES['en']['body']
         intro_text_raw = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
     
     # Преобразуем маркдаун в HTML для reportlab
@@ -1592,11 +1532,11 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Spacer(1, 1*cm))
     
     stats_data = [
-        ["Показатель", "Значение"],
-        ["Всего статей", str(total_articles)],
-        ["Областей науки", str(total_domains)],
-        ["Всего цитирований", str(total_citations)],
-        ["Активно цитируемые статьи", str(highly_cited)]
+        ["Metric", "Value"],
+        ["Total Articles", str(total_articles)],
+        ["Research Domains", str(total_domains)],
+        ["Total Citations", str(total_citations)],
+        ["Highly Cited Articles", str(highly_cited)]
     ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
@@ -1604,59 +1544,62 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#667eea')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), russian_font_name),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F2F4F4')]),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== ОГЛАВЛЕНИЕ (Domain -> Field -> Subfield) ==========
-    story.append(Paragraph("Содержание", title_style))
+    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield) ==========
+    story.append(Paragraph("Table of Contents", title_style))
     story.append(Spacer(1, 0.5*cm))
     
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
+        domain_avg = domain_stats.get('avg_citations', 0)
         
-        anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})', toc_domain_style))
+        anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
+        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
+            field_avg = field_stats.get('avg_citations', 0)
             
-            field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})', toc_field_style))
+            field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
+            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg {field_avg})', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})', toc_subfield_style))
+                subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
     story.append(PageBreak())
     
-    # ========== СТАТЬИ ПО ИЕРАРХИИ С ЯКОРЯМИ ==========
+    # ========== ARTICLES BY HIERARCHY WITH ANCHORS ==========
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
         
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (ср. {domain_avg})", domain_style))
+        anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
+        anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
+        story.append(anchor_para)
+        
+        domain_avg = domain_stats.get('avg_citations', 0)
+        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
@@ -1664,12 +1607,12 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
             
-            field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-            field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
+            field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
+            field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
             story.append(field_anchor_para)
             
             field_avg = field_stats.get('avg_citations', 0)
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (ср. {field_avg})", field_style))
+            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (avg {field_avg})", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
@@ -1677,28 +1620,27 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
                 
-                subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
+                subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
+                subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
                 story.append(subfield_anchor_para)
                 
                 subfield_avg = subfield_stats.get('avg_citations', 0)
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (ср. {subfield_avg})", subfield_style))
+                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     
-                    topic_avg = topic_stats.get('avg_citations', 0) if 'topic_stats' in locals() else 0
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (ср. {topic_avg})", topic_style))
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
-                        title = clean_text(article.get('title', 'Без названия'))
+                        title = clean_text(article.get('title', 'No title'))
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
                         
-                        authors = clean_text(article.get('authors', 'Авторы не указаны'))
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
+                        authors = clean_text(article.get('authors', 'Authors not specified'))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Authors:</b> {authors}", authors_style))
                         
                         journal = clean_text(article.get('journal_name', journal_name))
                         year = article.get('publication_year', '')
@@ -1710,11 +1652,11 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                         if year:
                             meta_parts.append(str(year))
                         if volume:
-                            meta_parts.append(f"Том {volume}")
+                            meta_parts.append(f"Volume {volume}")
                         if issue:
-                            meta_parts.append(f"Вып. {issue}")
+                            meta_parts.append(f"Issue {issue}")
                         if pages:
-                            meta_parts.append(f"С. {pages}")
+                            meta_parts.append(f"pp. {pages}")
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
@@ -1722,9 +1664,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                         citations_per_year = article.get('citations_per_year', 0)
                         is_highly = article.get('is_highly_cited', False)
                         
-                        citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
+                        citation_text = f"<b>Citations:</b> {citations} | <b>per year:</b> {citations_per_year}"
                         if is_highly:
-                            citation_text += " 🔥 Активно цитируемая"
+                            citation_text += " 🔥 Highly Cited"
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
                         
@@ -1746,35 +1688,35 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         
         story.append(PageBreak())
     
-    # ========== ЗАКЛЮЧЕНИЕ ==========
-    story.append(Paragraph("Заключение", title_style))
+    # ========== CONCLUSION ==========
+    story.append(Paragraph("Conclusion", title_style))
     story.append(Spacer(1, 0.5*cm))
     
     conclusion_text = f"""
-    Данный отчет содержит {total_articles} статей из журнала «{clean_text(journal_name)}», 
-    сгруппированных по иерархической структуре: {total_domains} областей науки, 
-    включающих множество полей и подполей. Из них {highly_cited} статей 
-    являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>
+    This report contains {total_articles} articles from «{clean_text(journal_name)}», 
+    grouped into a hierarchical structure: {total_domains} research domains, 
+    encompassing multiple fields and subfields. Among them, {highly_cited} articles 
+    are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>
     
-    Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» — 
-    они демонстрируют высокий научный интерес и могут стать важной частью Вашего исследования.<br/><br/>
+    We recommend paying special attention to articles marked as "Highly Cited" — 
+    they demonstrate significant scientific interest and can become an important part 
+    of your research.<br/><br/>
     
-    Отчет сгенерирован автоматически с использованием данных OpenAlex API.
+    This report was automatically generated using OpenAlex API data.
     """
     
     story.append(Paragraph(conclusion_text, conclusion_style))
     
     story.append(Spacer(1, 1*cm))
     
-    # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В КОНЦЕ ==========
+    # ========== APP LOGO AT THE END ==========
     try:
-        # Проверяем, есть ли логотип приложения в директории
         possible_paths = [
-            "logo.png",  # Текущая директория
-            "./logo.png",  # Относительный путь
-            "app/logo.png",  # Если в поддиректории
-            os.path.join(os.path.dirname(__file__), "logo.png"),  # Абсолютный путь
-            os.path.join(os.getcwd(), "logo.png")  # Текущая рабочая директория
+            "logo.png",
+            "./logo.png",
+            "app/logo.png",
+            os.path.join(os.path.dirname(__file__), "logo.png"),
+            os.path.join(os.getcwd(), "logo.png")
         ]
         
         app_logo_path = None
@@ -1784,20 +1726,17 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 break
         
         if app_logo_path:
-            # Проверяем с помощью PIL
             from PIL import Image as PILImage
             pil_img = PILImage.open(app_logo_path)
             pil_img.verify()
             pil_img.close()
             
-            # Используем Image из reportlab
             app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
             logger.info(f"App logo loaded successfully from: {app_logo_path}")
         else:
-            # Если логотип не найден, показываем эмодзи
             story.append(Paragraph("📚", ParagraphStyle(
                 'LogoEmoji',
                 parent=styles['Normal'],
@@ -1810,7 +1749,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             
     except Exception as e:
         logger.error(f"Could not load app logo: {e}")
-        # Если логотип не загрузился, показываем эмодзи
         story.append(Paragraph("📚", ParagraphStyle(
             'LogoEmoji',
             parent=styles['Normal'],
@@ -1821,7 +1759,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         story.append(Spacer(1, 0.2*cm))
     
     story.append(Paragraph(f"© Chimica Techno Acta | {datetime.now().strftime('%d.%m.%Y')}", footer_style))
-    story.append(Paragraph("Отчет подготовлен с использованием CTA Journal Analyzer Pro", footer_style))
+    story.append(Paragraph("Report generated using CTA Journal Analyzer Pro", footer_style))
     
     doc.build(story)
     
@@ -2130,7 +2068,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
         domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
+        domain_avg = domain_stats.get('avg_citations', 0)
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
         story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg {domain_avg})', toc_domain_style))
@@ -2139,7 +2077,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
+            field_avg = field_stats.get('avg_citations', 0)
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
             story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg {field_avg})', toc_field_style))
@@ -2148,7 +2086,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)  # <-- ДОБАВЛЕНО
+                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
                 story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg {subfield_avg})', toc_subfield_style))
@@ -2280,13 +2218,12 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     # ========== APP LOGO AT THE END ==========
     try:
-        # Check for app logo in various locations
         possible_paths = [
-            "logo.png",  # Current directory
-            "./logo.png",  # Relative path
-            "app/logo.png",  # If in subdirectory
-            os.path.join(os.path.dirname(__file__), "logo.png"),  # Absolute path
-            os.path.join(os.getcwd(), "logo.png")  # Current working directory
+            "logo.png",
+            "./logo.png",
+            "app/logo.png",
+            os.path.join(os.path.dirname(__file__), "logo.png"),
+            os.path.join(os.getcwd(), "logo.png")
         ]
         
         app_logo_path = None
@@ -2296,20 +2233,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 break
         
         if app_logo_path:
-            # Verify with PIL
             from PIL import Image as PILImage
             pil_img = PILImage.open(app_logo_path)
             pil_img.verify()
             pil_img.close()
             
-            # Use Image from reportlab
             app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
             logger.info(f"App logo loaded successfully from: {app_logo_path}")
         else:
-            # If logo not found, show emoji
             story.append(Paragraph("📚", ParagraphStyle(
                 'LogoEmoji',
                 parent=styles['Normal'],
@@ -2322,7 +2256,6 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
     except Exception as e:
         logger.error(f"Could not load app logo: {e}")
-        # If logo fails to load, show emoji
         story.append(Paragraph("📚", ParagraphStyle(
             'LogoEmoji',
             parent=styles['Normal'],
