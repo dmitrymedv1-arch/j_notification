@@ -38,11 +38,11 @@ from PIL import Image as PILImage
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# Настройка логирования
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Настройки приложения
+# App settings
 st.set_page_config(
     page_title="Journal Article Analyzer Pro",
     page_icon="logo1.png",
@@ -51,7 +51,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# МУЛЬТИЯЗЫЧНАЯ ПОДДЕРЖКА
+# MULTILINGUAL SUPPORT
 # ============================================================================
 
 LANGUAGES = {
@@ -65,6 +65,7 @@ LANGUAGES = {
         'logo_label': 'Journal Logo (Optional)',
         'logo_help': 'Upload logo image (PNG, JPG) - will appear on PDF cover page',
         'next_btn': 'Next →',
+        'back_btn': '← Back',
         'step2_title': 'Step 2: Select Publication Years',
         'step2_desc': 'Choose year range for analysis',
         'years_label': 'Publication Years',
@@ -105,7 +106,19 @@ LANGUAGES = {
         'field': 'Field',
         'subfield': 'Subfield',
         'articles_count_label': 'articles',
-        'citations_count_label': 'citations'
+        'citations_count_label': 'citations',
+        'research_hierarchy': '📊 Research Hierarchy',
+        'pdf_reports': 'PDF Reports',
+        'txt_reports': 'TXT Reports',
+        'include_metrics': '✅ Include citation metrics in Table of Contents',
+        'highly_cited_threshold_total': 'Highly Cited threshold - Total citations >',
+        'highly_cited_threshold_per_year': 'Highly Cited threshold - Citations per year >',
+        'domain_icon': '🌍',
+        'field_icon': '📁',
+        'subfield_icon': '📂',
+        'topic_icon': '🔬',
+        'authors_icon': '👤',
+        'link_icon': '🔗'
     },
     'ru': {
         'app_title': '📚 Анализатор статей журнала Pro',
@@ -117,6 +130,7 @@ LANGUAGES = {
         'logo_label': 'Логотип журнала (опционально)',
         'logo_help': 'Загрузите изображение логотипа (PNG, JPG) - появится на обложке PDF',
         'next_btn': 'Далее →',
+        'back_btn': '← Назад',
         'step2_title': 'Шаг 2: Выбор годов публикации',
         'step2_desc': 'Выберите период для анализа',
         'years_label': 'Годы публикации',
@@ -157,12 +171,24 @@ LANGUAGES = {
         'field': 'Поле',
         'subfield': 'Подполе',
         'articles_count_label': 'статей',
-        'citations_count_label': 'цитирований'
+        'citations_count_label': 'цитирований',
+        'research_hierarchy': '📊 Иерархия исследований',
+        'pdf_reports': 'PDF отчеты',
+        'txt_reports': 'TXT отчеты',
+        'include_metrics': '✅ Включить метрики цитирования в оглавление',
+        'highly_cited_threshold_total': 'Порог активно цитируемых - Всего цитирований >',
+        'highly_cited_threshold_per_year': 'Порог активно цитируемых - Цитирований в год >',
+        'domain_icon': '🌍',
+        'field_icon': '📁',
+        'subfield_icon': '📂',
+        'topic_icon': '🔬',
+        'authors_icon': '👤',
+        'link_icon': '🔗'
     }
 }
 
 # ============================================================================
-# НАСТРАИВАЕМЫЙ ТЕКСТ ПО УМОЛЧАНИЮ
+# CUSTOMIZABLE DEFAULT MESSAGES
 # ============================================================================
 
 DEFAULT_MESSAGES = {
@@ -193,24 +219,24 @@ We invite you to explore this selection and consider incorporating these works i
 }
 
 # ============================================================================
-# КАСТОМНЫЙ CSS ДИЗАЙН
+# CUSTOM CSS DESIGN
 # ============================================================================
 
 st.markdown("""
 <style>
-    /* Основные стили */
+    /* Main styles */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     * {
         font-family: 'Inter', sans-serif;
     }
     
-    /* Градиентный фон для main */
+    /* Gradient background for main */
     .stApp {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     }
     
-    /* Главный хедер с анимацией */
+    /* Main header with animation */
     .main-header {
         font-size: 2.5rem;
         font-weight: 800;
@@ -244,7 +270,7 @@ st.markdown("""
         }
     }
     
-    /* Карточки шагов с эффектом стекла */
+    /* Step cards with glass effect */
     .step-card {
         background: rgba(255, 255, 255, 0.95);
         backdrop-filter: blur(10px);
@@ -262,7 +288,7 @@ st.markdown("""
         box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
     }
     
-    /* Метрические карточки с градиентом */
+    /* Metric cards with gradient */
     .metric-card {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
         border-radius: 20px;
@@ -306,7 +332,7 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
-    /* Карточка результата */
+    /* Result card */
     .result-card {
         background: white;
         border-radius: 16px;
@@ -322,7 +348,7 @@ st.markdown("""
         transform: translateX(4px);
     }
     
-    /* Фильтр секция */
+    /* Filter section */
     .filter-section {
         background: rgba(255, 255, 255, 0.9);
         backdrop-filter: blur(8px);
@@ -333,7 +359,7 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
     }
     
-    /* Кастомные кнопки */
+    /* Custom buttons */
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -356,7 +382,7 @@ st.markdown("""
         transform: translateY(0px);
     }
     
-    /* Кастомные expander */
+    /* Custom expander */
     .streamlit-expanderHeader {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         border-radius: 12px;
@@ -369,7 +395,7 @@ st.markdown("""
         background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
     }
     
-    /* Инпуты с фокусом */
+    /* Inputs with focus */
     .stTextInput > div > div > input {
         border-radius: 12px;
         border: 2px solid #e0e0e0;
@@ -381,23 +407,23 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
     
-    /* Селекторы */
+    /* Selectors */
     .stSelectbox > div > div {
         border-radius: 12px;
     }
     
-    /* Прогресс бар */
+    /* Progress bar */
     .stProgress > div > div > div > div {
         background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
     }
     
-    /* Инфо бокс */
+    /* Info box */
     .stAlert {
         border-radius: 16px;
         border-left: 4px solid #667eea;
     }
     
-    /* Скроллбар */
+    /* Scrollbar */
     ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -413,7 +439,7 @@ st.markdown("""
         border-radius: 10px;
     }
     
-    /* Анимация для загрузки */
+    /* Loading animation */
     @keyframes pulse {
         0%, 100% {
             opacity: 1;
@@ -427,7 +453,7 @@ st.markdown("""
         animation: pulse 1.5s ease-in-out infinite;
     }
     
-    /* Badge для цитирований */
+    /* Citation badge */
     .citation-badge {
         display: inline-block;
         background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
@@ -438,14 +464,14 @@ st.markdown("""
         color: #d63031;
     }
     
-    /* Разделитель с градиентом */
+    /* Gradient divider */
     .gradient-divider {
         height: 2px;
         background: linear-gradient(90deg, transparent, #667eea, #764ba2, #f093fb, transparent);
         margin: 20px 0;
     }
     
-    /* Футер */
+    /* Footer */
     .footer {
         text-align: center;
         padding: 20px;
@@ -455,7 +481,7 @@ st.markdown("""
         margin-top: 40px;
     }
     
-    /* Кастомный таб */
+    /* Custom tab */
     .custom-tab {
         background: white;
         border-radius: 12px;
@@ -464,7 +490,7 @@ st.markdown("""
         transition: all 0.2s;
     }
     
-    /* Стиль для текстовой области сообщения */
+    /* Message editor style */
     .message-editor {
         background: white;
         border-radius: 16px;
@@ -473,7 +499,7 @@ st.markdown("""
         margin-bottom: 16px;
     }
     
-    /* Анимированный градиент */
+    /* Animated gradient */
     @keyframes gradientShift {
         0% {
             background-position: 0% 50%;
@@ -489,7 +515,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# КОНФИГУРАЦИЯ OPENALEX API
+# OPENALEX API CONFIGURATION
 # ============================================================================
 
 OPENALEX_BASE_URL = "https://api.openalex.org"
@@ -511,7 +537,7 @@ CACHE_EXPIRY_DAYS = 30
 CACHE_DIR.mkdir(exist_ok=True)
 
 # ============================================================================
-# КЭШИРОВАНИЕ SQLITE
+# SQLITE CACHING
 # ============================================================================
 
 def init_cache_db():
@@ -642,12 +668,12 @@ def clear_old_cache():
     conn.close()
 
 # ============================================================================
-# ПАРСИНГ ISSN
+# ISSN PARSING
 # ============================================================================
 
 def parse_issn(issn_input: str) -> Optional[str]:
     """
-    Парсит ISSN из различных форматов:
+    Parse ISSN from various formats:
     - "1234-5678" -> "12345678"
     - "1234 5678" -> "12345678"
     - "12345678" -> "12345678"
@@ -656,37 +682,36 @@ def parse_issn(issn_input: str) -> Optional[str]:
     if not issn_input:
         return None
     
-    # Удаляем префикс ISSN если есть
+    # Remove ISSN prefix if present
     issn_clean = re.sub(r'^ISSN\s*', '', issn_input, flags=re.IGNORECASE)
     
-    # Оставляем только цифры
+    # Keep only digits
     digits = re.sub(r'[^0-9]', '', issn_clean)
     
-    # ISSN должен быть 8 цифр
+    # ISSN must be 8 digits
     if len(digits) == 8:
         return digits
     elif len(digits) == 7:
-        # Возможно пропущена контрольная цифра
         logger.warning(f"ISSN has 7 digits: {digits}")
         return None
     
     return None
 
 # ============================================================================
-# ПОИСК ЖУРНАЛА В OPENALEX
+# JOURNAL SEARCH IN OPENALEX
 # ============================================================================
 
 def get_journal_by_issn(issn: str) -> Optional[dict]:
     """
-    Поиск журнала в OpenAlex по ISSN.
+    Search for journal in OpenAlex by ISSN.
     """
-    # Проверяем кэш
+    # Check cache
     cached = get_cached_source(issn)
     if cached:
         logger.info(f"Using cached journal data for ISSN {issn}")
         return cached
     
-    # Приводим ISSN к формату XXXX-XXXX для OpenAlex
+    # Format ISSN as XXXX-XXXX for OpenAlex
     issn_clean = re.sub(r'[^0-9X]', '', issn.upper())
     if len(issn_clean) == 8:
         issn_formatted = f"{issn_clean[:4]}-{issn_clean[4:]}"
@@ -696,7 +721,7 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
     logger.info(f"Searching for journal with ISSN {issn_formatted}")
     
     try:
-        # OpenAlex использует ISSN-L или обычный ISSN
+        # OpenAlex uses ISSN-L or regular ISSN
         url = f"{OPENALEX_BASE_URL}/sources"
         params = {
             "filter": f"issn:{issn_formatted}",
@@ -715,7 +740,7 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
                 logger.info(f"Found journal: {source.get('display_name')}")
                 return source
             else:
-                # Пробуем поискать через primary_location.source.issn в works
+                # Try searching through primary_location.source.issn in works
                 logger.warning(f"No journal found for ISSN {issn_formatted}, trying alternative search...")
                 alt_url = f"{OPENALEX_BASE_URL}/works"
                 alt_params = {
@@ -728,7 +753,7 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
                 if alt_response.status_code == 200:
                     alt_data = alt_response.json()
                     if alt_data.get('results'):
-                        # Извлекаем информацию о журнале из первой работы
+                        # Extract journal info from first work
                         first_work = alt_data['results'][0]
                         primary_location = first_work.get('primary_location', {})
                         source = primary_location.get('source', {})
@@ -748,13 +773,13 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
         return None
 
 # ============================================================================
-# ЗАГРУЗКА СТАТЕЙ ЖУРНАЛА
+# JOURNAL ARTICLES LOADING
 # ============================================================================
 
 def parse_year_filter(year_input: str) -> List[int]:
     """
-    Парсит строку фильтра годов.
-    Примеры:
+    Parse year filter string.
+    Examples:
     "2021" -> [2021]
     "2021,2023-2025" -> [2021, 2023, 2024, 2025]
     "2023-2026" -> [2023, 2024, 2025, 2026]
@@ -791,7 +816,7 @@ def parse_year_filter(year_input: str) -> List[int]:
 
 def format_year_filter_for_filename(years: List[int]) -> str:
     """
-    Форматирует список годов для имени файла.
+    Format year list for filename.
     [2021, 2023, 2024, 2025] -> "2021,2023-2025"
     """
     if not years:
@@ -822,12 +847,12 @@ def format_year_filter_for_filename(years: List[int]) -> str:
 
 def fetch_articles_by_journal(source_id: str, years: List[int], progress_callback=None) -> List[dict]:
     """
-    Загружает все статьи журнала за указанные годы.
+    Fetch all journal articles for specified years.
     """
     year_filter_str = ",".join(map(str, years))
     cache_key = f"{source_id}_{year_filter_str}"
     
-    # Проверяем кэш
+    # Check cache
     cached = get_cached_source_works(source_id, year_filter_str)
     if cached:
         logger.info(f"Using cached articles for {source_id}, years {years}")
@@ -840,7 +865,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     page_count = 0
     total_count = 0
     
-    # Используем более надежный фильтр через primary_location.source.id
+    # Use more reliable filter via primary_location.source.id
     years_str = "|".join(map(str, years))
     filter_str = f"primary_location.source.id:{source_id},publication_year:{years_str}"
     
@@ -891,7 +916,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
             cursor = next_cursor
             time.sleep(0.1)
         
-        # Сохраняем в кэш
+        # Save to cache
         if all_articles:
             cache_data = {
                 'articles': all_articles,
@@ -908,12 +933,14 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
         return all_articles
 
 # ============================================================================
-# РАСЧЕТ МЕТРИК ЦИТИРОВАНИЯ
+# CITATION METRICS CALCULATION
 # ============================================================================
 
-def calculate_citation_activity(work: dict, current_year: int = None) -> Tuple[int, float, bool]:
+def calculate_citation_activity(work: dict, current_year: int = None, 
+                                threshold_total: int = None, 
+                                threshold_per_year: int = None) -> Tuple[int, float, bool]:
     """
-    Рассчитывает метрики цитирования для статьи.
+    Calculate citation metrics for an article.
     
     Returns:
         Tuple[citations_total, citations_per_year, is_highly_cited]
@@ -924,23 +951,32 @@ def calculate_citation_activity(work: dict, current_year: int = None) -> Tuple[i
     if current_year is None:
         current_year = datetime.now().year
     
-    # Возраст статьи в годах (минимум 1 год)
+    # Article age in years (minimum 1 year)
     age = max(1, current_year - publication_year) if publication_year > 0 else 1
     
     citations_per_year = citations_total / age
     
-    # Активно-цитируемая: >10 всего ИЛИ >5 в год
-    is_highly_cited = (citations_total > 10) or (citations_per_year > 5)
+    # Determine if highly cited based on thresholds
+    is_highly_cited = False
+    
+    if threshold_total is not None and threshold_per_year is not None:
+        is_highly_cited = (citations_total > threshold_total) or (citations_per_year > threshold_per_year)
+    elif threshold_total is not None:
+        is_highly_cited = (citations_total > threshold_total)
+    elif threshold_per_year is not None:
+        is_highly_cited = (citations_per_year > threshold_per_year)
+    else:
+        is_highly_cited = False
     
     return citations_total, citations_per_year, is_highly_cited
 
 # ============================================================================
-# ОБОГАЩЕНИЕ ДАННЫХ СТАТЬИ
+# ARTICLE DATA ENRICHMENT
 # ============================================================================
 
 def extract_topic_hierarchy(article: dict) -> Tuple[str, str, str, str]:
     """
-    Извлекает иерархию тем из primary_topic статьи.
+    Extract topic hierarchy from article's primary_topic.
     
     Returns:
         Tuple[domain, field, subfield, topic]
@@ -950,26 +986,26 @@ def extract_topic_hierarchy(article: dict) -> Tuple[str, str, str, str]:
     if not primary_topic:
         return ("Unidentified", "Unidentified", "Unidentified", "Unidentified")
     
-    # Извлекаем Domain
+    # Extract Domain
     domain_obj = primary_topic.get('domain', {})
     domain = domain_obj.get('display_name', 'Unidentified') if domain_obj else 'Unidentified'
     
-    # Извлекаем Field
+    # Extract Field
     field_obj = primary_topic.get('field', {})
     field = field_obj.get('display_name', 'Unidentified') if field_obj else 'Unidentified'
     
-    # Извлекаем Subfield
+    # Extract Subfield
     subfield_obj = primary_topic.get('subfield', {})
     subfield = subfield_obj.get('display_name', 'Unidentified') if subfield_obj else 'Unidentified'
     
-    # Извлекаем Topic
+    # Extract Topic
     topic = primary_topic.get('display_name', 'Unidentified')
     
     return (domain, field, subfield, topic)
 
-def enrich_article_data(article: dict) -> dict:
+def enrich_article_data(article: dict, threshold_total: int = None, threshold_per_year: int = None) -> dict:
     """
-    Обогащает данные статьи полной информацией.
+    Enrich article data with complete information.
     """
     if not article:
         return {}
@@ -979,14 +1015,14 @@ def enrich_article_data(article: dict) -> dict:
     if doi_raw:
         doi_clean = str(doi_raw).replace('https://doi.org/', '')
     
-    # Извлекаем информацию о публикации
+    # Extract publication info
     biblio = article.get('biblio', {})
     volume = biblio.get('volume', '')
     issue = biblio.get('issue', '')
     first_page = biblio.get('first_page', '')
     last_page = biblio.get('last_page', '')
     
-    # Форматируем страницы
+    # Format pages
     pages_str = ''
     if first_page and last_page and first_page != last_page:
         pages_str = f"{first_page}-{last_page}"
@@ -995,41 +1031,40 @@ def enrich_article_data(article: dict) -> dict:
     elif last_page:
         pages_str = last_page
     
-    # Извлекаем авторов с правильной обработкой кириллицы
+    # Extract authors with proper Cyrillic handling
     authorships = article.get('authorships', [])
     authors = []
     
-    for authorship in authorships[:10]:  # Максимум 10 авторов
+    for authorship in authorships[:10]:  # Maximum 10 authors
         if authorship:
-            # Пробуем несколько вариантов получения имени автора
             author_name = ''
             
-            # Вариант 1: raw_author_name (оригинальное написание)
+            # Try raw_author_name (original spelling)
             if 'raw_author_name' in authorship:
                 author_name = authorship.get('raw_author_name', '')
             
-            # Вариант 2: через author.display_name
+            # Try author.display_name
             if not author_name:
                 author = authorship.get('author', {})
                 if author:
                     author_name = author.get('display_name', '')
             
-            # Вариант 3: напрямую из author
+            # Try direct author field
             if not author_name and 'author' in authorship:
                 author_obj = authorship['author']
                 if isinstance(author_obj, dict):
                     author_name = author_obj.get('display_name', '')
             
             if author_name:
-                # Нормализуем Unicode
+                # Normalize Unicode
                 import unicodedata
                 author_name = unicodedata.normalize('NFC', str(author_name))
                 
-                # Очищаем от проблемных символов, но сохраняем кириллицу
-                # Разрешенные символы: буквы (рус/англ), пробелы, точки, запятые, дефисы, скобки
+                # Clean problematic characters but keep Cyrillic
+                # Allowed: letters (Russian/English), spaces, dots, commas, hyphens, parentheses
                 author_name = re.sub(r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)]', '', author_name)
                 
-                # Убираем лишние пробелы
+                # Remove extra spaces
                 author_name = re.sub(r'\s+', ' ', author_name).strip()
                 
                 if author_name:
@@ -1039,13 +1074,15 @@ def enrich_article_data(article: dict) -> dict:
     if len(authorships) > 10:
         authors_str += f" et al. ({len(authorships)} authors total)"
     
-    # Получаем иерархию тем
+    # Get topic hierarchy
     domain, field, subfield, primary_topic = extract_topic_hierarchy(article)
     
-    # Рассчитываем метрики цитирования
-    citations_total, citations_per_year, is_highly_cited = calculate_citation_activity(article)
+    # Calculate citation metrics with thresholds
+    citations_total, citations_per_year, is_highly_cited = calculate_citation_activity(
+        article, None, threshold_total, threshold_per_year
+    )
     
-    # Получаем информацию об источнике (журнале)
+    # Get source (journal) info
     journal_name = ''
     primary_location = article.get('primary_location')
     if primary_location:
@@ -1082,12 +1119,12 @@ def enrich_article_data(article: dict) -> dict:
     return enriched
 
 # ============================================================================
-# ИЕРАРХИЧЕСКАЯ ГРУППИРОВКА СТАТЕЙ
+# HIERARCHICAL ARTICLE GROUPING
 # ============================================================================
 
-def group_articles_by_hierarchy(articles: List[dict]) -> Dict[str, Dict[str, Dict[str, Dict[str, List[dict]]]]]:
+def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = None, threshold_per_year: int = None) -> Dict[str, Dict[str, Dict[str, Dict[str, List[dict]]]]]:
     """
-    Группирует статьи по иерархии: Domain -> Field -> Subfield -> Topic
+    Group articles by hierarchy: Domain -> Field -> Subfield -> Topic
     
     Returns:
         {
@@ -1104,7 +1141,7 @@ def group_articles_by_hierarchy(articles: List[dict]) -> Dict[str, Dict[str, Dic
     hierarchy = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
     
     for article in articles:
-        enriched = enrich_article_data(article)
+        enriched = enrich_article_data(article, threshold_total, threshold_per_year)
         
         domain = enriched.get('domain', 'Unidentified')
         field = enriched.get('field', 'Unidentified')
@@ -1113,7 +1150,7 @@ def group_articles_by_hierarchy(articles: List[dict]) -> Dict[str, Dict[str, Dic
         
         hierarchy[domain][field][subfield][topic].append(enriched)
     
-    # Преобразуем defaultdict в обычный dict для сериализации
+    # Convert defaultdict to regular dict for serialization
     result = {}
     for domain, fields in hierarchy.items():
         result[domain] = {}
@@ -1124,9 +1161,9 @@ def group_articles_by_hierarchy(articles: List[dict]) -> Dict[str, Dict[str, Dic
     
     return result
 
-def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
+def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True) -> Dict:
     """
-    Рассчитывает статистику для каждого уровня иерархии.
+    Calculate statistics for each hierarchy level.
     
     Returns:
         {
@@ -1161,8 +1198,8 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
                     
                     topic_stats[topic] = {
                         'articles': topic_articles,
-                        'citations': topic_citations,
-                        'avg_citations': topic_citations / topic_articles if topic_articles > 0 else 0,
+                        'citations': topic_citations if include_metrics else None,
+                        'avg_citations': (topic_citations / topic_articles) if (include_metrics and topic_articles > 0) else None,
                         'articles_list': articles
                     }
                     
@@ -1171,8 +1208,8 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
                 
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
-                    'citations': subfield_citations,
-                    'avg_citations': subfield_citations / subfield_articles if subfield_articles > 0 else 0,
+                    'citations': subfield_citations if include_metrics else None,
+                    'avg_citations': (subfield_citations / subfield_articles) if (include_metrics and subfield_articles > 0) else None,
                     'topics': topic_stats
                 }
                 
@@ -1181,8 +1218,8 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
             
             field_stats[field] = {
                 'articles': field_articles,
-                'citations': field_citations,
-                'avg_citations': field_citations / field_articles if field_articles > 0 else 0,
+                'citations': field_citations if include_metrics else None,
+                'avg_citations': (field_citations / field_articles) if (include_metrics and field_articles > 0) else None,
                 'subfields': subfield_stats
             }
             
@@ -1191,44 +1228,44 @@ def calculate_hierarchy_statistics(hierarchy: Dict) -> Dict:
         
         stats[domain] = {
             'articles': domain_articles,
-            'citations': domain_citations,
-            'avg_citations': domain_citations / domain_articles if domain_articles > 0 else 0,
+            'citations': domain_citations if include_metrics else None,
+            'avg_citations': (domain_citations / domain_articles) if (include_metrics and domain_articles > 0) else None,
             'fields': field_stats
         }
     
     return stats
 
 # ============================================================================
-# ГЕНЕРАЦИЯ АББРЕВИАТУРЫ ЖУРНАЛА
+# JOURNAL ABBREVIATION GENERATION
 # ============================================================================
 
 def generate_journal_abbreviation(journal_name: str) -> str:
     """
-    Генерирует аббревиатуру из названия журнала.
-    Пример: "Journal of Power Sources" -> "JOPS"
+    Generate abbreviation from journal name.
+    Example: "Journal of Power Sources" -> "JOPS"
     """
     if not journal_name:
         return "JOURNAL"
     
-    # Слова для игнорирования
+    # Words to ignore
     stop_words = {'of', 'the', 'and', 'for', 'in', 'on', 'at', 'to', 'by', 'with', 'from'}
     
-    # Разбиваем на слова
+    # Split into words
     words = re.findall(r'[A-Za-z]+', journal_name)
     
-    # Берем первые буквы значимых слов
+    # Take first letters of significant words
     abbreviation_parts = []
     for word in words:
         word_lower = word.lower()
         if word_lower not in stop_words and len(word) > 2:
             abbreviation_parts.append(word[0].upper())
         elif len(abbreviation_parts) == 0 and len(words) <= 3:
-            # Если журнал короткий, берем первые буквы всех слов
+            # If journal is short, take first letters of all words
             abbreviation_parts.append(word[0].upper())
     
-    # Если аббревиатура получилась слишком короткой (меньше 3 букв)
+    # If abbreviation is too short (less than 3 letters)
     if len(abbreviation_parts) < 3 and len(words) > 0:
-        # Берем первые 3-4 буквы первого значимого слова
+        # Take first 3-4 letters of first significant word
         for word in words:
             if word.lower() not in stop_words:
                 abbreviation_parts = [word[:4].upper()]
@@ -1236,7 +1273,7 @@ def generate_journal_abbreviation(journal_name: str) -> str:
     
     abbreviation = ''.join(abbreviation_parts)
     
-    # Если все еще пусто, берем первые 4 буквы первого слова
+    # If still empty, take first 4 letters of first word
     if not abbreviation and words:
         abbreviation = words[0][:4].upper()
     
@@ -1244,37 +1281,38 @@ def generate_journal_abbreviation(journal_name: str) -> str:
 
 def generate_filename(journal_abbr: str, years: List[int], language: str, extension: str) -> str:
     """
-    Генерирует имя файла в формате: JOPS_2024,2026_en.pdf
+    Generate filename in format: JOPS_2024,2026_en.pdf
     """
     years_str = format_year_filter_for_filename(years)
     return f"{journal_abbr}_{years_str}_{language}.{extension}"
 
 def format_message_with_variables(message: str, journal_name: str, years_str: str) -> str:
-    """Заменяет переменные в сообщении на реальные значения"""
+    """Replace variables in message with actual values"""
     message = message.replace('JOURNAL_NAME', journal_name)
     message = message.replace('YEARS', years_str)
     return message
 
 # ============================================================================
-# ГЕНЕРАЦИЯ PDF ОТЧЕТА (РУССКИЙ) С ИЕРАРХИЕЙ
+# PDF REPORT GENERATION (RUSSIAN) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
-                    hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
-    """Генерация PDF отчета на русском языке с иерархической группировкой и средней цитируемостью"""
-
+                    hierarchy: Dict, logo_path: str = None, custom_message: str = None,
+                    include_metrics: bool = True) -> bytes:
+    """Generate PDF report in Russian with hierarchical grouping and citation metrics toggle"""
+    
     import hashlib                    
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.fonts import addMapping
     
-    # Регистрируем шрифт с поддержкой кириллицы
+    # Register Cyrillic font
     import os
     
     font_found = False
     russian_font_name = 'Helvetica'  # fallback
     
-    # Список возможных путей к шрифтам с кириллицей
+    # List of possible font paths with Cyrillic support
     font_paths = [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
@@ -1316,11 +1354,11 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         return text
     
-    # Рассчитываем статистику
-    stats = calculate_hierarchy_statistics(hierarchy)
+    # Calculate statistics
+    stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
-    total_citations = sum(s['citations'] for s in stats.values())
+    total_citations = sum(s['citations'] for s in stats.values()) if include_metrics else 0
     highly_cited = sum(1 for domain in hierarchy.values() 
                       for field in domain.values()
                       for subfield in field.values()
@@ -1340,7 +1378,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     styles = getSampleStyleSheet()
     
-    # Стили с поддержкой кириллицы
+    # Styles with Cyrillic support
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Normal'],
@@ -1531,7 +1569,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     story = []
     
-    # ========== ТИТУЛЬНАЯ СТРАНИЦА ==========
+    # ========== COVER PAGE ==========
     story.append(Spacer(1, 2*cm))
     
     if logo_path and os.path.exists(logo_path):
@@ -1568,14 +1606,14 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(f"Период публикации: {years_str}", subtitle_style))
     story.append(Spacer(1, 1.5*cm))
     
-    # Настраиваемый текст или стандартный
+    # Customizable text or default
     if custom_message:
         intro_text_raw = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
     else:
         default_msg = DEFAULT_MESSAGES['ru']['body']
         intro_text_raw = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
     
-    # Преобразуем маркдаун в HTML для reportlab
+    # Convert markdown to HTML for reportlab
     intro_text = intro_text_raw.replace('\n\n', '<br/><br/>')
     intro_text = intro_text.replace('\n• ', '<br/>• ')
     intro_text = intro_text.replace('\n', '<br/>')
@@ -1585,14 +1623,22 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
-    stats_data = [
-        ["Показатель", "Значение"],
-        ["Всего статей", str(total_articles)],
-        ["Областей науки", str(total_domains)],
-        ["Всего цитирований", str(total_citations)],
-        ["Средняя цитируемость", f"{total_citations/total_articles:.2f}" if total_articles > 0 else "0"],
-        ["Активно цитируемые статьи", str(highly_cited)]
-    ]
+    if include_metrics:
+        stats_data = [
+            ["Показатель", "Значение"],
+            ["Всего статей", str(total_articles)],
+            ["Областей науки", str(total_domains)],
+            ["Всего цитирований", str(total_citations)],
+            ["Средняя цитируемость", f"{total_citations/total_articles:.2f}" if total_articles > 0 else "0"],
+            ["Активно цитируемые статьи", str(highly_cited)]
+        ]
+    else:
+        stats_data = [
+            ["Показатель", "Значение"],
+            ["Всего статей", str(total_articles)],
+            ["Областей науки", str(total_domains)],
+            ["Активно цитируемые статьи", str(highly_cited)]
+        ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
     stats_table.setStyle(TableStyle([
@@ -1609,79 +1655,115 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== ОГЛАВЛЕНИЕ (Domain -> Field -> Subfield) ==========
+    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield) ==========
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
         
-        anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})</a>', toc_domain_style))
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+            anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})</a>', toc_domain_style))
+        else:
+            anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей</a>', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
             
-            field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})', toc_field_style))
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+                field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})', toc_field_style))
+            else:
+                field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})', toc_subfield_style))
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                    subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
+                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})', toc_subfield_style))
+                else:
+                    subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
+                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
     story.append(PageBreak())
     
-    # ========== СТАТЬИ ПО ИЕРАРХИИ С ЯКОРЯМИ ==========
+    # ========== ARTICLES BY HIERARCHY WITH ANCHORS ==========
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
+        
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+        else:
+            domain_citations = 0
+            domain_avg = 0
         
         anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
         story.append(anchor_para)
         
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})", domain_style))
+        if include_metrics:
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})", domain_style))
+        else:
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
+            
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+            else:
+                field_citations = 0
+                field_avg = 0
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
             story.append(field_anchor_para)
             
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})", field_style))
+            if include_metrics:
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})", field_style))
+            else:
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
+                
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                else:
+                    subfield_citations = 0
+                    subfield_avg = 0
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
                 story.append(subfield_anchor_para)
                 
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})", subfield_style))
+                if include_metrics:
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})", subfield_style))
+                else:
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
@@ -1689,7 +1771,10 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})", topic_style))
+                    if include_metrics:
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})", topic_style))
+                    else:
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -1717,6 +1802,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
                         is_highly = article.get('is_highly_cited', False)
@@ -1745,7 +1831,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         
         story.append(PageBreak())
     
-    # ========== ЗАКЛЮЧЕНИЕ ==========
+    # ========== CONCLUSION ==========
     story.append(Paragraph("Заключение", title_style))
     story.append(Spacer(1, 0.5*cm))
     
@@ -1754,9 +1840,13 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     conclusion_text = f"""
     Данный отчет содержит {total_articles} статей из журнала «{clean_text(journal_name)}», 
     сгруппированных по иерархической структуре: {total_domains} областей науки, 
-    включающих множество полей и подполей. Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.
-    Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>
+    включающих множество полей и подполей."""
     
+    if include_metrics:
+        conclusion_text += f""" Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.
+    Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>"""
+    
+    conclusion_text += """
     Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» — 
     они демонстрируют высокий научный интерес и могут стать важной частью Вашего исследования.<br/><br/>
     
@@ -1767,7 +1857,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     story.append(Spacer(1, 1*cm))
     
-    # ========== ЛОГОТИП ПРИЛОЖЕНИЯ В КОНЦЕ ==========
+    # ========== APP LOGO AT THE END ==========
     try:
         possible_paths = [
             "logo.png",
@@ -1824,12 +1914,13 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     return buffer.getvalue()
 
 # ============================================================================
-# ГЕНЕРАЦИЯ PDF ОТЧЕТА (АНГЛИЙСКИЙ) С ИЕРАРХИЕЙ
+# PDF REPORT GENERATION (ENGLISH) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
 def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int], 
-                    hierarchy: Dict, logo_path: str = None, custom_message: str = None) -> bytes:
-    """Генерация PDF отчета на английском языке с иерархической группировкой и средней цитируемостью"""
+                    hierarchy: Dict, logo_path: str = None, custom_message: str = None,
+                    include_metrics: bool = True) -> bytes:
+    """Generate PDF report in English with hierarchical grouping and citation metrics toggle"""
     
     def clean_text(text):
         if not text:
@@ -1844,11 +1935,11 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         text = re.sub(allowed_pattern, '', text)
         return text
     
-    # Рассчитываем статистику
-    stats = calculate_hierarchy_statistics(hierarchy)
+    # Calculate statistics
+    stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
-    total_citations = sum(s['citations'] for s in stats.values())
+    total_citations = sum(s['citations'] for s in stats.values()) if include_metrics else 0
     highly_cited = sum(1 for domain in hierarchy.values() 
                       for field in domain.values()
                       for subfield in field.values()
@@ -1868,7 +1959,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     styles = getSampleStyleSheet()
     
-    # Кастомные стили
+    # Custom styles
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -2079,14 +2170,14 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Paragraph(f"Publication period: {years_str}", subtitle_style))
     story.append(Spacer(1, 1.5*cm))
     
-    # Настраиваемый текст или стандартный
+    # Customizable text or default
     if custom_message:
         intro_text_raw = format_message_with_variables(custom_message, clean_text(journal_name), years_str)
     else:
         default_msg = DEFAULT_MESSAGES['en']['body']
         intro_text_raw = format_message_with_variables(default_msg, clean_text(journal_name), years_str)
     
-    # Преобразуем маркдаун в HTML для reportlab
+    # Convert markdown to HTML for reportlab
     intro_text = intro_text_raw.replace('\n\n', '<br/><br/>')
     intro_text = intro_text.replace('\n• ', '<br/>• ')
     intro_text = intro_text.replace('\n', '<br/>')
@@ -2098,14 +2189,22 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     avg_overall = total_citations / total_articles if total_articles > 0 else 0
     
-    stats_data = [
-        ["Metric", "Value"],
-        ["Total Articles", str(total_articles)],
-        ["Research Domains", str(total_domains)],
-        ["Total Citations", str(total_citations)],
-        ["Average Citations per Article", f"{avg_overall:.2f}"],
-        ["Highly Cited Articles", str(highly_cited)]
-    ]
+    if include_metrics:
+        stats_data = [
+            ["Metric", "Value"],
+            ["Total Articles", str(total_articles)],
+            ["Research Domains", str(total_domains)],
+            ["Total Citations", str(total_citations)],
+            ["Average Citations per Article", f"{avg_overall:.2f}"],
+            ["Highly Cited Articles", str(highly_cited)]
+        ]
+    else:
+        stats_data = [
+            ["Metric", "Value"],
+            ["Total Articles", str(total_articles)],
+            ["Research Domains", str(total_domains)],
+            ["Highly Cited Articles", str(highly_cited)]
+        ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
     stats_table.setStyle(TableStyle([
@@ -2128,29 +2227,41 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
         
-        anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
-        story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})</a>', toc_domain_style))
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+            anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})</a>', toc_domain_style))
+        else:
+            anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles</a>', toc_domain_style))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
             
-            field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
-            story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})', toc_field_style))
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+                field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})', toc_field_style))
+            else:
+                field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles', toc_field_style))
             
             for subfield in subfields.keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})', toc_subfield_style))
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                    subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
+                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})', toc_subfield_style))
+                else:
+                    subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
+                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles', toc_subfield_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -2160,40 +2271,64 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
+        
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+        else:
+            domain_citations = 0
+            domain_avg = 0
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
         story.append(anchor_para)
         
-        story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})", domain_style))
+        if include_metrics:
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})", domain_style))
+        else:
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles", domain_style))
         story.append(Spacer(1, 0.3*cm))
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
+            
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+            else:
+                field_citations = 0
+                field_avg = 0
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
             story.append(field_anchor_para)
             
-            story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})", field_style))
+            if include_metrics:
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})", field_style))
+            else:
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles", field_style))
             story.append(Spacer(1, 0.2*cm))
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
+                
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                else:
+                    subfield_citations = 0
+                    subfield_avg = 0
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
                 story.append(subfield_anchor_para)
                 
-                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})", subfield_style))
+                if include_metrics:
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})", subfield_style))
+                else:
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
                 
                 for topic, articles in topics.items():
@@ -2201,7 +2336,10 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})", topic_style))
+                    if include_metrics:
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})", topic_style))
+                    else:
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -2229,6 +2367,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
                         is_highly = article.get('is_highly_cited', False)
@@ -2264,9 +2403,13 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     conclusion_text = f"""
     This report contains {total_articles} articles from «{clean_text(journal_name)}», 
     grouped into a hierarchical structure: {total_domains} research domains, 
-    encompassing multiple fields and subfields. The overall average citation rate is {avg_overall:.2f} citations per article.
-    Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>
+    encompassing multiple fields and subfields."""
     
+    if include_metrics:
+        conclusion_text += f""" The overall average citation rate is {avg_overall:.2f} citations per article.
+    Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>"""
+    
+    conclusion_text += """
     We recommend paying special attention to articles marked as "Highly Cited" — 
     they demonstrate significant scientific interest and can become an important part 
     of your research.<br/><br/>
@@ -2340,28 +2483,29 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     return buffer.getvalue()
 
 # ============================================================================
-# ГЕНЕРАЦИЯ TXT ОТЧЕТА (РУССКИЙ) С ИЕРАРХИЕЙ
+# TXT REPORT GENERATION (RUSSIAN) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
-def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None) -> str:
-    """Генерация TXT отчета на русском языке с иерархической группировкой и средней цитируемостью"""
+def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None,
+                   include_metrics: bool = True) -> str:
+    """Generate TXT report in Russian with hierarchical grouping and citation metrics toggle"""
     
     output = []
     
     years_str = format_year_filter_for_filename(years)
     
-    # Рассчитываем статистику
-    stats = calculate_hierarchy_statistics(hierarchy)
+    # Calculate statistics
+    stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
-    total_citations = sum(s['citations'] for s in stats.values())
+    total_citations = sum(s['citations'] for s in stats.values()) if include_metrics else 0
     highly_cited = sum(1 for domain in hierarchy.values() 
                       for field in domain.values()
                       for subfield in field.values()
                       for topic in subfield.values()
                       for a in topic if a.get('is_highly_cited', False))
     
-    # Заголовок
+    # Header
     output.append("=" * 80)
     output.append(f"АНАЛИТИЧЕСКИЙ ОТЧЕТ")
     output.append(f"Журнал: {journal_name}")
@@ -2369,7 +2513,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("=" * 80)
     output.append("")
     
-    # Вступительное обращение (настраиваемое)
+    # Introduction (customizable)
     if custom_message:
         intro_text = format_message_with_variables(custom_message, journal_name, years_str)
     else:
@@ -2380,77 +2524,114 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("=" * 80)
     output.append("")
     
-    # Статистика
+    # Statistics
     avg_overall = total_citations / total_articles if total_articles > 0 else 0
     
     output.append("СТАТИСТИКА")
     output.append("-" * 40)
     output.append(f"Всего статей: {total_articles}")
     output.append(f"Областей науки: {total_domains}")
-    output.append(f"Всего цитирований: {total_citations}")
-    output.append(f"Средняя цитируемость: {avg_overall:.2f}")
+    if include_metrics:
+        output.append(f"Всего цитирований: {total_citations}")
+        output.append(f"Средняя цитируемость: {avg_overall:.2f}")
     output.append(f"Активно цитируемые статьи: {highly_cited}")
     output.append("")
     output.append("=" * 80)
     output.append("")
     
-    # Содержание (оглавление по иерархии)
+    # Table of Contents
     output.append("СОДЕРЖАНИЕ")
     output.append("-" * 40)
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
-        output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
+        
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+            output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
+        else:
+            output.append(f"{domain} — {domain_articles} статей")
         
         for field in fields.keys():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
-            output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})")
+            
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+                output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})")
+            else:
+                output.append(f"  └── {field} — {field_articles} статей")
             
             for subfield in fields[field].keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
-                output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})")
+                
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                    output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})")
+                else:
+                    output.append(f"      └── {subfield} — {subfield_articles} статей")
     
     output.append("")
     output.append("=" * 80)
     output.append("")
     
-    # Статьи по иерархии
+    # Articles by hierarchy
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
+        
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+        else:
+            domain_citations = 0
+            domain_avg = 0
         
         output.append("")
         output.append("█" * 80)
-        output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
+        if include_metrics:
+            output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
+        else:
+            output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей")
         output.append("█" * 80)
         output.append("")
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
             
-            output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f}) ▓▓▓")
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+            else:
+                field_citations = 0
+                field_avg = 0
+            
+            if include_metrics:
+                output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f}) ▓▓▓")
+            else:
+                output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей ▓▓▓")
             output.append("")
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f}) ▒▒▒")
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                else:
+                    subfield_citations = 0
+                    subfield_avg = 0
+                
+                if include_metrics:
+                    output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f}) ▒▒▒")
+                else:
+                    output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей ▒▒▒")
                 output.append("")
                 
                 for topic, articles in topics.items():
@@ -2458,7 +2639,10 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})")
+                    if include_metrics:
+                        output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})")
+                    else:
+                        output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей")
                     output.append("")
                     
                     for idx, article in enumerate(articles, 1):
@@ -2477,6 +2661,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                         
                         output.append(", ".join(meta_parts))
                         
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
                         highly = " 🔥 АКТИВНО ЦИТИРУЕМАЯ" if article.get('is_highly_cited') else ""
@@ -2495,14 +2680,18 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         
         output.append("")
     
-    # Заключение
+    # Conclusion
     output.append("=" * 80)
     output.append("ЗАКЛЮЧЕНИЕ")
     output.append("=" * 80)
     output.append("")
     output.append(f"Данный отчет содержит {total_articles} статей из журнала «{journal_name}»,")
     output.append(f"сгруппированных по иерархической структуре: {total_domains} областей науки,")
-    output.append(f"включающих множество полей и подполей. Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.")
+    output.append(f"включающих множество полей и подполей.")
+    
+    if include_metrics:
+        output.append(f"Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.")
+    
     output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     output.append("в Ваши научные работы.")
     output.append("")
@@ -2518,21 +2707,22 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     return "\n".join(output)
 
 # ============================================================================
-# ГЕНЕРАЦИЯ TXT ОТЧЕТА (АНГЛИЙСКИЙ) С ИЕРАРХИЕЙ
+# TXT REPORT GENERATION (ENGLISH) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
-def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None) -> str:
-    """Генерация TXT отчета на английском языке с иерархической группировкой и средней цитируемостью"""
+def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None,
+                   include_metrics: bool = True) -> str:
+    """Generate TXT report in English with hierarchical grouping and citation metrics toggle"""
     
     output = []
     
     years_str = format_year_filter_for_filename(years)
     
-    # Рассчитываем статистику
-    stats = calculate_hierarchy_statistics(hierarchy)
+    # Calculate statistics
+    stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
-    total_citations = sum(s['citations'] for s in stats.values())
+    total_citations = sum(s['citations'] for s in stats.values()) if include_metrics else 0
     highly_cited = sum(1 for domain in hierarchy.values() 
                       for field in domain.values()
                       for subfield in field.values()
@@ -2559,12 +2749,15 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("")
     
     # Statistics
+    avg_overall = total_citations / total_articles if total_articles > 0 else 0
+    
     output.append("STATISTICS")
     output.append("-" * 40)
     output.append(f"Total Articles: {total_articles}")
     output.append(f"Research Domains: {total_domains}")
-    output.append(f"Total Citations: {total_citations}")
-    output.append(f"Average Citations per Article: {total_citations/total_articles:.2f}" if total_articles > 0 else "Average Citations per Article: 0")
+    if include_metrics:
+        output.append(f"Total Citations: {total_citations}")
+        output.append(f"Average Citations per Article: {avg_overall:.2f}")
     output.append(f"Highly Cited Articles: {highly_cited}")
     output.append("")
     output.append("=" * 80)
@@ -2576,23 +2769,35 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
-        output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
+        
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+            output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
+        else:
+            output.append(f"{domain} — {domain_articles} articles")
         
         for field in fields.keys():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
-            output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})")
+            
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+                output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})")
+            else:
+                output.append(f"  └── {field} — {field_articles} articles")
             
             for subfield in fields[field].keys():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
-                output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})")
+                
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                    output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})")
+                else:
+                    output.append(f"      └── {subfield} — {subfield_articles} articles")
     
     output.append("")
     output.append("=" * 80)
@@ -2602,31 +2807,55 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     for domain, fields in hierarchy.items():
         domain_stats = stats.get(domain, {})
         domain_articles = domain_stats.get('articles', 0)
-        domain_citations = domain_stats.get('citations', 0)
-        domain_avg = domain_stats.get('avg_citations', 0)
+        
+        if include_metrics:
+            domain_citations = domain_stats.get('citations', 0)
+            domain_avg = domain_stats.get('avg_citations', 0)
+        else:
+            domain_citations = 0
+            domain_avg = 0
         
         output.append("")
         output.append("█" * 80)
-        output.append(f"DOMAIN: {domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
+        if include_metrics:
+            output.append(f"DOMAIN: {domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
+        else:
+            output.append(f"DOMAIN: {domain} — {domain_articles} articles")
         output.append("█" * 80)
         output.append("")
         
         for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
-            field_citations = field_stats.get('citations', 0)
-            field_avg = field_stats.get('avg_citations', 0)
             
-            output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f}) ▓▓▓")
+            if include_metrics:
+                field_citations = field_stats.get('citations', 0)
+                field_avg = field_stats.get('avg_citations', 0)
+            else:
+                field_citations = 0
+                field_avg = 0
+            
+            if include_metrics:
+                output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f}) ▓▓▓")
+            else:
+                output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles ▓▓▓")
             output.append("")
             
             for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
-                subfield_citations = subfield_stats.get('citations', 0)
-                subfield_avg = subfield_stats.get('avg_citations', 0)
                 
-                output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f}) ▒▒▒")
+                if include_metrics:
+                    subfield_citations = subfield_stats.get('citations', 0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                else:
+                    subfield_citations = 0
+                    subfield_avg = 0
+                
+                if include_metrics:
+                    output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f}) ▒▒▒")
+                else:
+                    output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles ▒▒▒")
                 output.append("")
                 
                 for topic, articles in topics.items():
@@ -2634,7 +2863,10 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    output.append(f"  ● TOPIC: {topic} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})")
+                    if include_metrics:
+                        output.append(f"  ● TOPIC: {topic} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})")
+                    else:
+                        output.append(f"  ● TOPIC: {topic} — {topic_articles} articles")
                     output.append("")
                     
                     for idx, article in enumerate(articles, 1):
@@ -2653,6 +2885,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                         
                         output.append(", ".join(meta_parts))
                         
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
                         highly = " 🔥 HIGHLY CITED" if article.get('is_highly_cited') else ""
@@ -2677,11 +2910,13 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("=" * 80)
     output.append("")
     
-    avg_overall = total_citations / total_articles if total_articles > 0 else 0
-    
     output.append(f"This report contains {total_articles} articles from «{journal_name}»,")
     output.append(f"grouped into a hierarchical structure: {total_domains} research domains,")
-    output.append(f"encompassing multiple fields and subfields. The overall average citation rate is {avg_overall:.2f} citations per article.")
+    output.append(f"encompassing multiple fields and subfields.")
+    
+    if include_metrics:
+        output.append(f"The overall average citation rate is {avg_overall:.2f} citations per article.")
+    
     output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     output.append("")
     output.append("We recommend paying special attention to articles marked as 'Highly Cited' —")
@@ -2696,13 +2931,13 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     return "\n".join(output)
 
 # ============================================================================
-# ИНТЕРФЕЙС ПРИЛОЖЕНИЯ
+# APPLICATION INTERFACE
 # ============================================================================
 
 def main():
-    """Главная функция приложения"""
+    """Main application function"""
     
-    # Переключатель языка
+    # Language switcher
     col_lang1, col_lang2 = st.columns([6, 1])
     with col_lang2:
         language = st.selectbox("🌐", ["English", "Русский"], key="language_selector")
@@ -2710,7 +2945,7 @@ def main():
     lang = 'en' if language == "English" else 'ru'
     t = LANGUAGES[lang]
     
-    # Инициализация состояния
+    # Initialize session state
     if 'step' not in st.session_state:
         st.session_state.step = 1
     if 'journal_info' not in st.session_state:
@@ -2729,8 +2964,14 @@ def main():
         st.session_state.custom_message_en = DEFAULT_MESSAGES['en']['body']
     if 'custom_message_ru' not in st.session_state:
         st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
+    if 'include_metrics' not in st.session_state:
+        st.session_state.include_metrics = True
+    if 'threshold_total' not in st.session_state:
+        st.session_state.threshold_total = None
+    if 'threshold_per_year' not in st.session_state:
+        st.session_state.threshold_per_year = None
     
-    # Заголовок
+    # Header
     import os
     from PIL import Image
     
@@ -2744,10 +2985,10 @@ def main():
         st.markdown(f"<h1 class='main-header'>{t['app_title']}</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='font-size: 1rem; color: #666; margin-bottom: 1.5rem;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
     
-    # Очистка старого кэша
+    # Clear old cache
     clear_old_cache()
     
-    # Шаг 1: Ввод ISSN и логотипа
+    # Step 1: Enter ISSN and logo
     if st.session_state.step == 1:
         st.markdown(f"""
         <div class="step-card">
@@ -2782,7 +3023,7 @@ def main():
                         if journal:
                             st.session_state.journal_info = journal
                             if logo_file:
-                                # Сохраняем логотип временно
+                                # Save logo temporarily
                                 temp_logo_path = CACHE_DIR / f"logo_{issn_clean}.png"
                                 with open(temp_logo_path, 'wb') as f:
                                     f.write(logo_file.getbuffer())
@@ -2796,7 +3037,7 @@ def main():
             else:
                 st.error(t['journal_not_found'])
     
-    # Шаг 2: Выбор годов
+    # Step 2: Select years
     elif st.session_state.step == 2:
         st.markdown(f"""
         <div class="step-card">
@@ -2819,7 +3060,7 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("← " + t['next_btn'].replace('→', '←'), use_container_width=True):
+            if st.button(t['back_btn'], use_container_width=True):
                 st.session_state.step = 1
                 st.rerun()
         
@@ -2837,7 +3078,10 @@ def main():
                                 articles = fetch_articles_by_journal(source_id, years)
                                 if articles:
                                     with st.spinner(t['analyzing']):
-                                        hierarchy = group_articles_by_hierarchy(articles)
+                                        # Get thresholds from session state
+                                        threshold_total = st.session_state.threshold_total
+                                        threshold_per_year = st.session_state.threshold_per_year
+                                        hierarchy = group_articles_by_hierarchy(articles, threshold_total, threshold_per_year)
                                         st.session_state.articles = articles
                                         st.session_state.hierarchy = hierarchy
                                         st.session_state.step = 3
@@ -2851,7 +3095,7 @@ def main():
                 else:
                     st.error(t['years_help'])
     
-    # Шаг 3: Результаты
+    # Step 3: Results
     elif st.session_state.step == 3:
         st.markdown(f"""
         <div class="step-card">
@@ -2864,11 +3108,11 @@ def main():
         hierarchy = st.session_state.hierarchy
         years = st.session_state.selected_years
         
-        # Рассчитываем статистику для отображения
-        stats = calculate_hierarchy_statistics(hierarchy)
+        # Calculate statistics for display
+        stats = calculate_hierarchy_statistics(hierarchy, st.session_state.include_metrics)
         total_articles = sum(s['articles'] for s in stats.values())
         total_domains = len(hierarchy)
-        total_citations = sum(s['citations'] for s in stats.values())
+        total_citations = sum(s['citations'] for s in stats.values()) if st.session_state.include_metrics else 0
         highly_cited = sum(1 for domain in hierarchy.values() 
                           for field in domain.values()
                           for subfield in field.values()
@@ -2876,7 +3120,7 @@ def main():
                           for a in topic if a.get('is_highly_cited', False))
         
         if total_articles > 0:
-            # Метрики в красивых карточках
+            # Metrics in beautiful cards
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
@@ -2908,89 +3152,160 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Раздел настройки сообщения
+            # Back button to Step 2
+            if st.button(t['back_btn'], use_container_width=True):
+                st.session_state.step = 2
+                st.rerun()
+            
+            # Citation metrics toggle section
+            st.markdown("---")
+            st.markdown("### 📊 Citation Settings")
+            
+            col_metrics1, col_metrics2 = st.columns([2, 1])
+            with col_metrics1:
+                include_metrics = st.checkbox(
+                    t['include_metrics'],
+                    value=st.session_state.include_metrics,
+                    key="include_metrics_checkbox"
+                )
+                
+                if include_metrics != st.session_state.include_metrics:
+                    st.session_state.include_metrics = include_metrics
+                    # Recalculate hierarchy with new metrics setting
+                    threshold_total = st.session_state.threshold_total
+                    threshold_per_year = st.session_state.threshold_per_year
+                    st.session_state.hierarchy = group_articles_by_hierarchy(
+                        st.session_state.articles, threshold_total, threshold_per_year
+                    )
+                    st.rerun()
+            
+            # Threshold inputs (only shown when metrics are included)
+            if st.session_state.include_metrics:
+                st.markdown("#### 🔥 Highly Cited Thresholds")
+                st.markdown("*Leave fields empty to disable 'Highly Cited' marking*")
+                
+                col_thresh1, col_thresh2 = st.columns(2)
+                with col_thresh1:
+                    threshold_total_input = st.number_input(
+                        t['highly_cited_threshold_total'],
+                        min_value=0,
+                        value=st.session_state.threshold_total if st.session_state.threshold_total is not None else 0,
+                        step=1,
+                        key="threshold_total_input"
+                    )
+                    threshold_total = threshold_total_input if threshold_total_input > 0 else None
+                
+                with col_thresh2:
+                    threshold_per_year_input = st.number_input(
+                        t['highly_cited_threshold_per_year'],
+                        min_value=0,
+                        value=st.session_state.threshold_per_year if st.session_state.threshold_per_year is not None else 0,
+                        step=1,
+                        key="threshold_per_year_input"
+                    )
+                    threshold_per_year = threshold_per_year_input if threshold_per_year_input > 0 else None
+                
+                # Check if thresholds changed
+                if threshold_total != st.session_state.threshold_total or threshold_per_year != st.session_state.threshold_per_year:
+                    st.session_state.threshold_total = threshold_total
+                    st.session_state.threshold_per_year = threshold_per_year
+                    # Recalculate hierarchy with new thresholds
+                    st.session_state.hierarchy = group_articles_by_hierarchy(
+                        st.session_state.articles, threshold_total, threshold_per_year
+                    )
+                    st.rerun()
+            
+            # Custom message section
             st.markdown("---")
             st.markdown(f"### ✏️ {t['customize_message']}")
             
             with st.expander(f"📝 {t['customize_message']} ({language})"):
                 if language == "English":
-                    # Используем отдельную переменную для редактирования, не связанную с key
                     edited_message = st.text_area(
                         t['message_preview'],
                         value=st.session_state.custom_message_en,
                         height=300,
-                        key="custom_message_editor_en"  # Другой ключ!
+                        key="custom_message_editor_en"
                     )
-                    # Сохраняем изменения в session_state при изменении
                     if edited_message != st.session_state.custom_message_en:
                         st.session_state.custom_message_en = edited_message
                     
-                    # Кнопка сброса
                     if st.button(t['use_default'], key="reset_en"):
                         st.session_state.custom_message_en = DEFAULT_MESSAGES['en']['body']
                         st.rerun()
                 else:
-                    # Русская версия
                     edited_message = st.text_area(
                         t['message_preview'],
                         value=st.session_state.custom_message_ru,
                         height=300,
-                        key="custom_message_editor_ru"  # Другой ключ!
+                        key="custom_message_editor_ru"
                     )
-                    # Сохраняем изменения в session_state при изменении
                     if edited_message != st.session_state.custom_message_ru:
                         st.session_state.custom_message_ru = edited_message
                     
-                    # Кнопка сброса
                     if st.button(t['use_default'], key="reset_ru"):
                         st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
                         st.rerun()
             
-            # Отображение иерархии в UI
+            # Display hierarchy in UI
             st.markdown("---")
-            st.markdown("### 📊 Research Hierarchy")
+            st.markdown(f"### {t['research_hierarchy']}")
             
             for domain, fields in hierarchy.items():
                 domain_stats = stats.get(domain, {})
                 domain_articles = domain_stats.get('articles', 0)
-                domain_citations = domain_stats.get('citations', 0)
+                domain_citations = domain_stats.get('citations', 0) if st.session_state.include_metrics else 0
                 
-                with st.expander(f"🌍 {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}"):
+                if st.session_state.include_metrics:
+                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}"
+                else:
+                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}"
+                
+                with st.expander(expander_title):
                     for field, subfields in fields.items():
                         field_stats = domain_stats.get('fields', {}).get(field, {})
                         field_articles = field_stats.get('articles', 0)
-                        field_citations = field_stats.get('citations', 0)
+                        field_citations = field_stats.get('citations', 0) if st.session_state.include_metrics else 0
                         
-                        st.markdown(f"**📁 {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}")
+                        if st.session_state.include_metrics:
+                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}")
+                        else:
+                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}")
                         
                         for subfield, topics in subfields.items():
                             subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                             subfield_articles = subfield_stats.get('articles', 0)
-                            subfield_citations = subfield_stats.get('citations', 0)
+                            subfield_citations = subfield_stats.get('citations', 0) if st.session_state.include_metrics else 0
                             
-                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**📂 {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}")
+                            if st.session_state.include_metrics:
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}")
+                            else:
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}")
                             
                             for topic, articles in topics.items():
                                 topic_articles = len(articles)
                                 topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                                 
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**🔬 {topic}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']}")
+                                if st.session_state.include_metrics:
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']}")
+                                else:
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}")
                                 
-                                for idx, article in enumerate(articles[:5]):  # Показываем первые 5 статей для компактности
+                                for idx, article in enumerate(articles[:5]):  # Show first 5 articles for compactness
                                     st.markdown(f"""
                                     <div style="padding: 8px; margin: 4px 0 4px 60px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;">
                                         <b>{idx+1}. {article.get('title', 'No title')[:80]}{'...' if len(article.get('title', '')) > 80 else ''}</b><br>
-                                        👤 {article.get('authors', 'N/A')[:80]}<br>
+                                        {t['authors_icon']} {article.get('authors', 'N/A')[:80]}<br>
                                         📊 {t['citations']}: {article.get('cited_by_count', 0)} ({t['citations_per_year']}: {article.get('citations_per_year', 0)})
                                         {f' 🔥' if article.get('is_highly_cited') else ''}<br>
-                                        🔗 <a href="{article.get('doi_url', '#')}" target="_blank">{t['view_article']}</a>
+                                        {t['link_icon']} <a href="{article.get('doi_url', '#')}" target="_blank">{t['view_article']}</a>
                                     </div>
                                     """, unsafe_allow_html=True)
                                 
                                 if len(articles) > 5:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*... и {len(articles) - 5} других статей*")
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*... and {len(articles) - 5} more articles*")
             
-            # Экспорт
+            # Export section
             st.markdown("---")
             st.markdown(f"### {t['export_btn']}")
             
@@ -2999,7 +3314,7 @@ def main():
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**PDF Reports**")
+                st.markdown(f"**{t['pdf_reports']}**")
                 
                 # PDF English
                 pdf_en_data = generate_pdf_en(
@@ -3008,7 +3323,8 @@ def main():
                     years, 
                     hierarchy, 
                     st.session_state.journal_logo, 
-                    st.session_state.custom_message_en
+                    st.session_state.custom_message_en,
+                    st.session_state.include_metrics
                 )
                 filename_en = generate_filename(journal_abbr, years, 'en', 'pdf')
                 st.download_button(
@@ -3027,7 +3343,8 @@ def main():
                     years, 
                     hierarchy, 
                     st.session_state.journal_logo,
-                    st.session_state.custom_message_ru
+                    st.session_state.custom_message_ru,
+                    st.session_state.include_metrics
                 )
                 filename_ru = generate_filename(journal_abbr, years, 'ru', 'pdf')
                 st.download_button(
@@ -3040,14 +3357,15 @@ def main():
                 )
             
             with col2:
-                st.markdown("**TXT Reports**")
+                st.markdown(f"**{t['txt_reports']}**")
                 
                 # TXT English
                 txt_en_data = generate_txt_en(
                     journal_name, 
                     years, 
                     hierarchy, 
-                    st.session_state.custom_message_en
+                    st.session_state.custom_message_en,
+                    st.session_state.include_metrics
                 )
                 filename_en_txt = generate_filename(journal_abbr, years, 'en', 'txt')
                 st.download_button(
@@ -3064,7 +3382,8 @@ def main():
                     journal_name, 
                     years, 
                     hierarchy, 
-                    st.session_state.custom_message_ru
+                    st.session_state.custom_message_ru,
+                    st.session_state.include_metrics
                 )
                 filename_ru_txt = generate_filename(journal_abbr, years, 'ru', 'txt')
                 st.download_button(
@@ -3076,10 +3395,10 @@ def main():
                     key="txt_ru"
                 )
             
-            # Кнопка нового анализа
+            # New analysis button
             st.markdown("---")
             if st.button(t['new_analysis_btn'], use_container_width=True):
-                # Очищаем состояние
+                # Clear state
                 keys_to_clear = ['step', 'journal_info', 'journal_logo', 'articles', 
                                 'hierarchy', 'selected_years', 'years_input']
                 for key in keys_to_clear:
@@ -3089,11 +3408,11 @@ def main():
                 st.rerun()
         else:
             st.warning(t['no_articles'])
-            if st.button("← " + t['next_btn'].replace('→', '←'), use_container_width=True):
+            if st.button(t['back_btn'], use_container_width=True):
                 st.session_state.step = 2
                 st.rerun()
     
-    # Футер
+    # Footer
     st.markdown("""
     <div class="footer">
         <p>© CTA, https://chimicatechnoacta.ru / developed by daM©</p>
