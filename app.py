@@ -1236,6 +1236,113 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
     return stats
 
 # ============================================================================
+# HIERARCHY SORTING FUNCTIONS
+# ============================================================================
+
+def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Dict:
+    """
+    Sort hierarchy according to rules:
+    - If include_metrics = True: sort by avg_citations (descending), then by name alphabetically
+    - If include_metrics = False: sort by articles count (descending), then by name alphabetically
+    
+    Returns sorted hierarchy as OrderedDict
+    """
+    from collections import OrderedDict
+    
+    # First calculate statistics for all levels
+    stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
+    
+    sorted_hierarchy = OrderedDict()
+    
+    # Sort domains
+    if include_metrics:
+        # Sort by avg_citations (descending), then by name alphabetically
+        domains_sorted = sorted(
+            hierarchy.keys(),
+            key=lambda d: (
+                -stats[d].get('avg_citations', 0) if stats[d].get('avg_citations') is not None else -float('inf'),
+                d.lower()
+            )
+        )
+    else:
+        # Sort by articles count (descending), then by name alphabetically
+        domains_sorted = sorted(
+            hierarchy.keys(),
+            key=lambda d: (-stats[d].get('articles', 0), d.lower())
+        )
+    
+    for domain in domains_sorted:
+        fields = hierarchy[domain]
+        domain_stats = stats[domain]
+        sorted_fields = OrderedDict()
+        
+        # Sort fields within domain
+        if include_metrics:
+            fields_sorted = sorted(
+                fields.keys(),
+                key=lambda f: (
+                    -domain_stats['fields'][f].get('avg_citations', 0) if domain_stats['fields'][f].get('avg_citations') is not None else -float('inf'),
+                    f.lower()
+                )
+            )
+        else:
+            fields_sorted = sorted(
+                fields.keys(),
+                key=lambda f: (-domain_stats['fields'][f].get('articles', 0), f.lower())
+            )
+        
+        for field in fields_sorted:
+            subfields = fields[field]
+            field_stats = domain_stats['fields'][field]
+            sorted_subfields = OrderedDict()
+            
+            # Sort subfields within field
+            if include_metrics:
+                subfields_sorted = sorted(
+                    subfields.keys(),
+                    key=lambda sf: (
+                        -field_stats['subfields'][sf].get('avg_citations', 0) if field_stats['subfields'][sf].get('avg_citations') is not None else -float('inf'),
+                        sf.lower()
+                    )
+                )
+            else:
+                subfields_sorted = sorted(
+                    subfields.keys(),
+                    key=lambda sf: (-field_stats['subfields'][sf].get('articles', 0), sf.lower())
+                )
+            
+            for subfield in subfields_sorted:
+                topics = subfields[subfield]
+                subfield_stats = field_stats['subfields'][subfield]
+                sorted_topics = OrderedDict()
+                
+                # Sort topics within subfield
+                if include_metrics:
+                    topics_sorted = sorted(
+                        topics.keys(),
+                        key=lambda t: (
+                            -subfield_stats['topics'][t].get('avg_citations', 0) if subfield_stats['topics'][t].get('avg_citations') is not None else -float('inf'),
+                            t.lower()
+                        )
+                    )
+                else:
+                    topics_sorted = sorted(
+                        topics.keys(),
+                        key=lambda t: (-subfield_stats['topics'][t].get('articles', 0), t.lower())
+                    )
+                
+                for topic in topics_sorted:
+                    sorted_topics[topic] = topics[topic]
+                
+                sorted_subfields[subfield] = sorted_topics
+            
+            sorted_fields[field] = sorted_subfields
+        
+        sorted_hierarchy[domain] = sorted_fields
+    
+    return sorted_hierarchy
+
+# ============================================================================
 # JOURNAL ABBREVIATION GENERATION
 # ============================================================================
 
@@ -1636,8 +1743,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         stats_data = [
             ["Показатель", "Значение"],
             ["Всего статей", str(total_articles)],
-            ["Областей науки", str(total_domains)],
-            ["Активно цитируемые статьи", str(highly_cited)]
+            ["Областей науки", str(total_domains)]
         ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
@@ -2202,8 +2308,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         stats_data = [
             ["Metric", "Value"],
             ["Total Articles", str(total_articles)],
-            ["Research Domains", str(total_domains)],
-            ["Highly Cited Articles", str(highly_cited)]
+            ["Research Domains", str(total_domains)]
         ]
     
     stats_table = Table(stats_data, colWidths=[doc.width/2.5, doc.width/3])
@@ -2534,7 +2639,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     if include_metrics:
         output.append(f"Всего цитирований: {total_citations}")
         output.append(f"Средняя цитируемость: {avg_overall:.2f}")
-    output.append(f"Активно цитируемые статьи: {highly_cited}")
+        output.append(f"Активно цитируемые статьи: {highly_cited}")
     output.append("")
     output.append("=" * 80)
     output.append("")
@@ -2691,8 +2796,10 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     if include_metrics:
         output.append(f"Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.")
+        output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
+    else:
+        output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     
-    output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     output.append("в Ваши научные работы.")
     output.append("")
     output.append("Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» —")
@@ -2758,7 +2865,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     if include_metrics:
         output.append(f"Total Citations: {total_citations}")
         output.append(f"Average Citations per Article: {avg_overall:.2f}")
-    output.append(f"Highly Cited Articles: {highly_cited}")
+        output.append(f"Highly Cited Articles: {highly_cited}")
     output.append("")
     output.append("=" * 80)
     output.append("")
@@ -2916,8 +3023,10 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     if include_metrics:
         output.append(f"The overall average citation rate is {avg_overall:.2f} citations per article.")
+        output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
+    else:
+        output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     
-    output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     output.append("")
     output.append("We recommend paying special attention to articles marked as 'Highly Cited' —")
     output.append("they demonstrate significant scientific interest and can become an important part")
@@ -3081,7 +3190,9 @@ def main():
                                         # Get thresholds from session state
                                         threshold_total = st.session_state.threshold_total
                                         threshold_per_year = st.session_state.threshold_per_year
-                                        hierarchy = group_articles_by_hierarchy(articles, threshold_total, threshold_per_year)
+                                        hierarchy_unsorted = group_articles_by_hierarchy(articles, threshold_total, threshold_per_year)
+                                        # Apply sorting based on current include_metrics setting
+                                        hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, st.session_state.include_metrics)
                                         st.session_state.articles = articles
                                         st.session_state.hierarchy = hierarchy
                                         st.session_state.step = 3
@@ -3174,9 +3285,10 @@ def main():
                     # Recalculate hierarchy with new metrics setting
                     threshold_total = st.session_state.threshold_total
                     threshold_per_year = st.session_state.threshold_per_year
-                    st.session_state.hierarchy = group_articles_by_hierarchy(
+                    hierarchy_unsorted = group_articles_by_hierarchy(
                         st.session_state.articles, threshold_total, threshold_per_year
                     )
+                    st.session_state.hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, include_metrics)
                     st.rerun()
             
             # Threshold inputs (only shown when metrics are included)
@@ -3210,9 +3322,10 @@ def main():
                     st.session_state.threshold_total = threshold_total
                     st.session_state.threshold_per_year = threshold_per_year
                     # Recalculate hierarchy with new thresholds
-                    st.session_state.hierarchy = group_articles_by_hierarchy(
+                    hierarchy_unsorted = group_articles_by_hierarchy(
                         st.session_state.articles, threshold_total, threshold_per_year
                     )
+                    st.session_state.hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, st.session_state.include_metrics)
                     st.rerun()
             
             # Custom message section
