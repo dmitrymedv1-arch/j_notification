@@ -57,6 +57,7 @@ st.set_page_config(
 CROSSREF_API_URL = "https://api.crossref.org/works"
 CROSSREF_RATE_LIMIT = 50  # requests per second
 BATCH_DOI_SIZE = 50  # DOIs per batch request
+CROSSREF_EMAIL = "your-email@example.com"
 
 def extract_publication_date_from_crossref(work_data: dict) -> Optional[Tuple[int, int, int]]:
     """
