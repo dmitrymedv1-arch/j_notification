@@ -218,7 +218,7 @@ def enrich_articles_with_crossref_dates(articles: List[dict], progress_callback=
     for batch_idx, (batch_indices, batch_dois) in enumerate(batches):
         # Progress update
         if progress_callback:
-            progress_callback(processed_dois_count, total_dois)
+            progress_callback(processed_dois_count / total_dois if total_dois > 0 else 0, processed_dois_count, 0, total_dois, mode="crossref")
         
         # Fetch batch
         batch_results = fetch_crossref_dates_batch(batch_dois)
@@ -232,7 +232,7 @@ def enrich_articles_with_crossref_dates(articles: List[dict], progress_callback=
     
     # Final progress update
     if progress_callback:
-        progress_callback(total_dois, total_dois)
+        progress_callback(1.0, total_dois, 0, total_dois, mode="crossref")
     
     # Update articles with new dates
     articles_updated = 0
