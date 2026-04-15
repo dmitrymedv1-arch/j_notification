@@ -51,336 +51,6 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CROSSREF API FOR DATE VERIFICATION
-# ============================================================================
-
-CROSSREF_API_URL = "https://api.crossref.org/works"
-CROSSREF_RATE_LIMIT = 50  # requests per second
-BATCH_DOI_SIZE = 50  # DOIs per batch request
-CROSSREF_EMAIL = "your-email@example.com"
-
-def extract_publication_date_from_crossref(work_data: dict) -> Optional[Tuple[int, int, int]]:
-    """
-    Extract publication date from Crossref work data with priority hierarchy:
-    1. published-print.date-parts
-    2. published.date-parts
-    3. published-online.date-parts
-    4. deposited.date-parts
-    5. issued.date-parts
-    
-    Returns Tuple[year, month, day] or None if not found
-    """
-    if not work_data:
-        return None
-    
-    # Priority hierarchy for date fields
-    date_fields = ['published-print', 'published', 'published-online', 'deposited', 'issued']
-    
-    for field in date_fields:
-        date_info = work_data.get(field)
-        if date_info:
-            date_parts = date_info.get('date-parts')
-            if date_parts and len(date_parts) > 0 and len(date_parts[0]) > 0:
-                parts = date_parts[0]
-                year = parts[0] if len(parts) > 0 else None
-                month = parts[1] if len(parts) > 1 else 1
-                day = parts[2] if len(parts) > 2 else 1
-                
-                if year:
-                    return (year, month, day)
-    
-    return None
-
-def fetch_crossref_dates_batch(doi_list: List[str], progress_callback=None) -> Dict[str, Optional[Tuple[int, int, int]]]:
-    """
-    Fetch publication dates from Crossref for a batch of DOIs.
-    Uses batch API endpoint: /works?ids=DOI1,DOI2,...
-    
-    Args:
-        doi_list: List of DOIs (can include 'https://doi.org/' prefix or just the DOI string)
-        progress_callback: Optional callback function(processed_count, total_count)
-    
-    Returns:
-        Dict[doi_clean, (year, month, day) or None]
-    """
-    if not doi_list:
-        return {}
-    
-    # Clean DOIs (remove https://doi.org/ prefix if present)
-    clean_dois = []
-    doi_mapping = {}  # mapping from clean DOI to original DOI
-    
-    for doi in doi_list:
-        if not doi:
-            continue
-        # Remove URL prefix
-        clean = re.sub(r'^https?://doi\.org/', '', str(doi).strip())
-        # Remove any trailing slashes or whitespace
-        clean = clean.rstrip('/').strip()
-        if clean:
-            clean_dois.append(clean)
-            doi_mapping[clean] = doi
-    
-    if not clean_dois:
-        return {}
-    
-    # Join DOIs with comma for batch request
-    dois_param = ','.join(clean_dois[:BATCH_DOI_SIZE])  # Limit batch size
-    
-    params = {
-        'ids': dois_param,
-        'mailto': CROSSREF_EMAIL
-    }
-    
-    headers = {
-        'User-Agent': f'JournalAnalyzer (mailto:{CROSSREF_EMAIL})'
-    }
-    
-    results = {}
-    
-    try:
-        # Make batch request
-        url = f"{CROSSREF_API_URL}"
-        response = requests.get(url, params=params, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            message = data.get('message', {})
-            items = message.get('items', [])
-            
-            # Process each item in the response
-            for item in items:
-                doi_from_item = item.get('DOI', '')
-                if doi_from_item:
-                    # Find the original DOI in our mapping
-                    original_doi = doi_mapping.get(doi_from_item, doi_from_item)
-                    date_tuple = extract_publication_date_from_crossref(item)
-                    results[original_doi] = date_tuple
-            
-            # Mark missing DOIs as None
-            for clean_doi, original_doi in doi_mapping.items():
-                if original_doi not in results:
-                    results[original_doi] = None
-                    
-    except Exception as e:
-        logger.error(f"Error fetching Crossref batch: {str(e)}")
-        # Mark all as None on error
-        for clean_doi, original_doi in doi_mapping.items():
-            results[original_doi] = None
-    
-    if progress_callback:
-        progress_callback(len(doi_list), len(doi_list))
-    
-    return results
-
-def enrich_articles_with_crossref_dates(articles: List[dict], progress_callback=None) -> List[dict]:
-    """
-    Enrich articles with accurate publication dates from Crossref.
-    Uses batch requests with rate limiting (50 requests per second).
-    Retries failed DOIs with simple delay (no exponential backoff).
-    
-    Args:
-        articles: List of article dicts from OpenAlex
-        progress_callback: Optional callback for progress updates
-    
-    Returns:
-        List of articles with updated publication_year, publication_date
-    """
-    if not articles:
-        return articles
-    
-    # Extract DOIs from articles
-    dois_with_indices = []
-    for idx, article in enumerate(articles):
-        doi = article.get('doi')
-        if doi:
-            dois_with_indices.append((idx, doi))
-    
-    total_dois = len(dois_with_indices)
-    if total_dois == 0:
-        logger.info("No DOIs found in articles, skipping Crossref enrichment")
-        return articles
-    
-    logger.info(f"Enriching {total_dois} articles with Crossref dates")
-    
-    # Prepare DOIs in batches
-    all_doi_results = {}  # original_doi -> date_tuple
-    
-    # Split into batches of BATCH_DOI_SIZE
-    batches = []
-    for i in range(0, len(dois_with_indices), BATCH_DOI_SIZE):
-        batch = dois_with_indices[i:i + BATCH_DOI_SIZE]
-        batch_dois = [doi for _, doi in batch]
-        batches.append((batch, batch_dois))
-    
-    total_batches = len(batches)
-    processed_dois_count = 0
-    
-    for batch_idx, (batch_indices, batch_dois) in enumerate(batches):
-        # Progress update
-        if progress_callback:
-            progress_callback(processed_dois_count / total_dois if total_dois > 0 else 0, processed_dois_count, 0, total_dois, mode="crossref")
-        
-        # Fetch batch
-        batch_results = fetch_crossref_dates_batch(batch_dois)
-        all_doi_results.update(batch_results)
-        
-        processed_dois_count += len(batch_dois)
-        
-        # Rate limiting: wait 1 second between batches (50 requests per second = 1 request per 20ms, but we do 1 batch per second to be safe)
-        if batch_idx < total_batches - 1:
-            time.sleep(1)  # Simple delay, no exponential backoff
-    
-    # Final progress update
-    if progress_callback:
-        progress_callback(1.0, total_dois, 0, total_dois, mode="crossref")
-    
-    # Update articles with new dates
-    articles_updated = 0
-    for idx, article in enumerate(articles):
-        doi = article.get('doi')
-        if doi and doi in all_doi_results:
-            date_tuple = all_doi_results[doi]
-            if date_tuple:
-                year, month, day = date_tuple
-                
-                # Update publication_year
-                old_year = article.get('publication_year')
-                article['publication_year'] = year
-                
-                # Create proper publication_date in ISO format
-                article['publication_date'] = f"{year}-{month:02d}-{day:02d}"
-                
-                if old_year != year:
-                    logger.debug(f"Updated year for DOI {doi}: {old_year} -> {year}")
-                    articles_updated += 1
-    
-    logger.info(f"Crossref enrichment complete. Updated {articles_updated}/{total_dois} articles")
-    
-    return articles
-
-# Async version for better performance (optional)
-async def fetch_crossref_dates_batch_async(session: aiohttp.ClientSession, doi_list: List[str]) -> Dict[str, Optional[Tuple[int, int, int]]]:
-    """
-    Async version of fetch_crossref_dates_batch
-    """
-    if not doi_list:
-        return {}
-    
-    # Clean DOIs
-    clean_dois = []
-    doi_mapping = {}
-    
-    for doi in doi_list:
-        if not doi:
-            continue
-        clean = re.sub(r'^https?://doi\.org/', '', str(doi).strip())
-        clean = clean.rstrip('/').strip()
-        if clean:
-            clean_dois.append(clean)
-            doi_mapping[clean] = doi
-    
-    if not clean_dois:
-        return {}
-    
-    dois_param = ','.join(clean_dois[:BATCH_DOI_SIZE])
-    
-    params = {
-        'ids': dois_param,
-        'mailto': CROSSREF_EMAIL
-    }
-    
-    headers = {
-        'User-Agent': f'JournalAnalyzer (mailto:{CROSSREF_EMAIL})'
-    }
-    
-    results = {}
-    
-    try:
-        async with session.get(CROSSREF_API_URL, params=params, headers=headers, timeout=30) as response:
-            if response.status == 200:
-                data = await response.json()
-                message = data.get('message', {})
-                items = message.get('items', [])
-                
-                for item in items:
-                    doi_from_item = item.get('DOI', '')
-                    if doi_from_item:
-                        original_doi = doi_mapping.get(doi_from_item, doi_from_item)
-                        date_tuple = extract_publication_date_from_crossref(item)
-                        results[original_doi] = date_tuple
-                
-                for clean_doi, original_doi in doi_mapping.items():
-                    if original_doi not in results:
-                        results[original_doi] = None
-                        
-    except Exception as e:
-        logger.error(f"Error in async Crossref batch: {str(e)}")
-        for clean_doi, original_doi in doi_mapping.items():
-            results[original_doi] = None
-    
-    return results
-
-async def enrich_articles_with_crossref_dates_async(articles: List[dict], progress_callback=None) -> List[dict]:
-    """
-    Async version with better concurrency control
-    """
-    if not articles:
-        return articles
-    
-    # Extract DOIs
-    dois_with_indices = [(idx, article.get('doi')) for idx, article in enumerate(articles) if article.get('doi')]
-    total_dois = len(dois_with_indices)
-    
-    if total_dois == 0:
-        return articles
-    
-    logger.info(f"Async enriching {total_dois} articles with Crossref dates")
-    
-    # Prepare batches
-    batches = []
-    for i in range(0, len(dois_with_indices), BATCH_DOI_SIZE):
-        batch = dois_with_indices[i:i + BATCH_DOI_SIZE]
-        batch_dois = [doi for _, doi in batch]
-        batches.append((batch, batch_dois))
-    
-    all_results = {}
-    
-    # Process batches sequentially with rate limiting
-    async with aiohttp.ClientSession() as session:
-        for batch_idx, (batch_indices, batch_dois) in enumerate(batches):
-            if progress_callback:
-                progress_callback(batch_idx * BATCH_DOI_SIZE, total_dois)
-            
-            batch_results = await fetch_crossref_dates_batch_async(session, batch_dois)
-            all_results.update(batch_results)
-            
-            # Rate limiting: wait 1 second between batches
-            if batch_idx < len(batches) - 1:
-                await asyncio.sleep(1)
-    
-    if progress_callback:
-        progress_callback(total_dois, total_dois)
-    
-    # Update articles
-    articles_updated = 0
-    for idx, article in enumerate(articles):
-        doi = article.get('doi')
-        if doi and doi in all_results:
-            date_tuple = all_results[doi]
-            if date_tuple:
-                year, month, day = date_tuple
-                old_year = article.get('publication_year')
-                article['publication_year'] = year
-                article['publication_date'] = f"{year}-{month:02d}-{day:02d}"
-                
-                if old_year != year:
-                    articles_updated += 1
-    
-    logger.info(f"Async Crossref enrichment complete. Updated {articles_updated}/{total_dois} articles")
-    return articles
-
-# ============================================================================
 # MULTILINGUAL SUPPORT
 # ============================================================================
 
@@ -997,46 +667,6 @@ def clear_old_cache():
     conn.commit()
     conn.close()
 
-def cache_crossref_date(doi: str, year: int, month: int, day: int):
-    """Cache Crossref date results"""
-    conn = get_cache_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS crossref_cache (
-            doi TEXT PRIMARY KEY,
-            year INTEGER,
-            month INTEGER,
-            day INTEGER,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        INSERT OR REPLACE INTO crossref_cache (doi, year, month, day)
-        VALUES (?, ?, ?, ?)
-    ''', (doi, year, month, day))
-    
-    conn.commit()
-    conn.close()
-
-def get_cached_crossref_date(doi: str) -> Optional[Tuple[int, int, int]]:
-    """Get cached Crossref date"""
-    conn = get_cache_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT year, month, day FROM crossref_cache 
-        WHERE doi = ?
-    ''', (doi,))
-    
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result:
-        return (result[0], result[1], result[2])
-    return None
-
 # ============================================================================
 # ISSN PARSING
 # ============================================================================
@@ -1217,7 +847,7 @@ def format_year_filter_for_filename(years: List[int]) -> str:
 
 def fetch_articles_by_journal(source_id: str, years: List[int], progress_callback=None) -> List[dict]:
     """
-    Fetch all journal articles for specified years with Crossref date verification.
+    Fetch all journal articles for specified years.
     """
     year_filter_str = ",".join(map(str, years))
     cache_key = f"{source_id}_{year_filter_str}"
@@ -1226,28 +856,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     cached = get_cached_source_works(source_id, year_filter_str)
     if cached:
         logger.info(f"Using cached articles for {source_id}, years {years}")
-        articles = cached.get('articles', [])
-        # Still need to enrich with Crossref dates if not already done
-        # Check if articles have Crossref-enriched dates
-        needs_crossref = False
-        for article in articles[:10]:  # Sample check
-            if article.get('_crossref_enriched') != True:
-                needs_crossref = True
-                break
-        
-        if needs_crossref and articles:
-            logger.info("Cached articles need Crossref enrichment")
-            articles = enrich_articles_with_crossref_dates(articles, progress_callback)
-            # Update cache with enriched articles
-            cache_data = {
-                'articles': articles,
-                'total_count': len(articles),
-                'years': years,
-                'timestamp': datetime.now().isoformat(),
-                'crossref_enriched': True
-            }
-            cache_source_works(source_id, year_filter_str, cache_data)
-        return articles
+        return cached.get('articles', [])
     
     logger.info(f"Fetching articles for source {source_id}, years {years}")
     
@@ -1296,7 +905,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
             
             if progress_callback and total_count > 0:
                 progress = min(len(all_articles) / total_count, 1.0)
-                progress_callback(progress, len(all_articles), page_count, total_count, mode="openalex")
+                progress_callback(progress, len(all_articles), page_count, total_count)
             
             logger.info(f"Page {page_count}: got {len(articles)} articles, total: {len(all_articles)}/{total_count}")
             
@@ -1307,34 +916,13 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
             cursor = next_cursor
             time.sleep(0.1)
         
-        # ========== CROSSREF ENRICHMENT ==========
-        if all_articles:
-            logger.info(f"Enriching {len(all_articles)} articles with Crossref dates...")
-            
-            # Define progress wrapper for Crossref
-            def crossref_progress(processed, total):
-                if progress_callback:
-                    # Crossref progress is additional 30% after OpenAlex loading (which was 70%)
-                    crossref_progress_val = processed / total if total > 0 else 0
-                    # Total progress: 70% (OpenAlex) + 30% (Crossref) * crossref_progress
-                    total_progress = 0.7 + (crossref_progress_val * 0.3)
-                    progress_callback(total_progress, processed, 0, total, mode="crossref")
-            
-            # Enrich with accurate publication dates
-            all_articles = enrich_articles_with_crossref_dates(all_articles, crossref_progress)
-            
-            # Mark as enriched
-            for article in all_articles:
-                article['_crossref_enriched'] = True
-        
         # Save to cache
         if all_articles:
             cache_data = {
                 'articles': all_articles,
                 'total_count': total_count,
                 'years': years,
-                'timestamp': datetime.now().isoformat(),
-                'crossref_enriched': True
+                'timestamp': datetime.now().isoformat()
             }
             cache_source_works(source_id, year_filter_str, cache_data)
         
@@ -1343,7 +931,7 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     except Exception as e:
         logger.error(f"Error in fetch_articles_by_journal: {str(e)}")
         return all_articles
-        
+
 # ============================================================================
 # CITATION METRICS CALCULATION
 # ============================================================================
@@ -3558,7 +3146,7 @@ def main():
             else:
                 st.error(t['journal_not_found'])
     
-    # Step 2: Select years (замените соответствующий блок)
+    # Step 2: Select years
     elif st.session_state.step == 2:
         st.markdown(f"""
         <div class="step-card">
@@ -3593,43 +3181,26 @@ def main():
                         st.session_state.selected_years = years
                         st.session_state.years_input = years_input
                         
-                        # Create progress containers
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
-                        def update_progress(progress, articles_count, page_count, total_count, mode="openalex"):
-                            if mode == "openalex":
-                                status_text.text(f"📚 {t['loading_articles']} {articles_count}/{total_count} articles")
-                                progress_bar.progress(progress * 0.7)  # First 70% for loading
-                            elif mode == "crossref":
-                                status_text.text(f"🔍 Verifying dates with Crossref... {articles_count}/{total_count} DOIs processed")
-                                progress_bar.progress(0.7 + (progress * 0.3))  # Last 30% for Crossref
-                        
-                        source_id = st.session_state.journal_info.get('id')
-                        if source_id:
-                            # Fetch articles with Crossref enrichment
-                            articles = fetch_articles_by_journal(source_id, years, update_progress)
-                            
-                            # Clear progress indicators
-                            progress_bar.empty()
-                            status_text.empty()
-                            
-                            if articles:
-                                with st.spinner(t['analyzing']):
-                                    # Get thresholds from session state
-                                    threshold_total = st.session_state.threshold_total
-                                    threshold_per_year = st.session_state.threshold_per_year
-                                    hierarchy_unsorted = group_articles_by_hierarchy(articles, threshold_total, threshold_per_year)
-                                    # Apply sorting based on current include_metrics setting
-                                    hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, st.session_state.include_metrics)
-                                    st.session_state.articles = articles
-                                    st.session_state.hierarchy = hierarchy
-                                    st.session_state.step = 3
-                                    st.rerun()
+                        with st.spinner(t['loading_articles']):
+                            source_id = st.session_state.journal_info.get('id')
+                            if source_id:
+                                articles = fetch_articles_by_journal(source_id, years)
+                                if articles:
+                                    with st.spinner(t['analyzing']):
+                                        # Get thresholds from session state
+                                        threshold_total = st.session_state.threshold_total
+                                        threshold_per_year = st.session_state.threshold_per_year
+                                        hierarchy_unsorted = group_articles_by_hierarchy(articles, threshold_total, threshold_per_year)
+                                        # Apply sorting based on current include_metrics setting
+                                        hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, st.session_state.include_metrics)
+                                        st.session_state.articles = articles
+                                        st.session_state.hierarchy = hierarchy
+                                        st.session_state.step = 3
+                                        st.rerun()
+                                else:
+                                    st.error(t['no_articles'])
                             else:
-                                st.error(t['no_articles'])
-                        else:
-                            st.error(t['journal_not_found'])
+                                st.error(t['journal_not_found'])
                     else:
                         st.error(t['years_help'])
                 else:
