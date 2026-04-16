@@ -1791,7 +1791,7 @@ def analyze_collaboration(hierarchy: Dict) -> Dict:
                         'author_citation_correlation': round(correlation, 2),
                         'correlation_significant': p_value < 0.05,
                         'num_articles': len(articles),
-                        'recommendation': self._get_collaboration_recommendation(avg_authors, correlation, avg_citations)
+                        'recommendation': _get_collaboration_recommendation(avg_authors, correlation, avg_citations)
                     }
     
     return collaboration_stats
