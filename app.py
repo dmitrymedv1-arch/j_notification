@@ -37,9 +37,6 @@ import xlsxwriter
 from PIL import Image as PILImage
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from scipy import stats as scipy_stats
-from sklearn.linear_model import LinearRegression
-import networkx as nx
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -121,23 +118,7 @@ LANGUAGES = {
         'subfield_icon': '📂',
         'topic_icon': '🔬',
         'authors_icon': '👤',
-        'link_icon': '🔗',
-        'fwci_label': 'FWCI',
-        'percentile_label': 'Percentile',
-        'top10_label': 'Top 10%',
-        'trend_growing': '🚀 Growing',
-        'trend_declining': '📉 Declining',
-        'trend_stable': '⚖️ Stable',
-        'gap_strong': '💪 Strong area',
-        'gap_weak': '⚠️ White spot',
-        'collab_international': '🌍 International',
-        'lineage_index': '🔗 Lineage Index',
-        'citation_velocity': '⚡ Velocity',
-        'hot_topics': '🔥 Hot Topics',
-        'world_comparison': '🌍 World Comparison',
-        'trend_analysis': '📈 Trend Analysis',
-        'collaboration_analysis': '👥 Collaboration Analysis',
-        'research_lineage': '🔬 Research Lineage'
+        'link_icon': '🔗'
     },
     'ru': {
         'app_title': '📚 Анализатор статей журнала Pro',
@@ -202,23 +183,7 @@ LANGUAGES = {
         'subfield_icon': '📂',
         'topic_icon': '🔬',
         'authors_icon': '👤',
-        'link_icon': '🔗',
-        'fwci_label': 'FWCI',
-        'percentile_label': 'Перцентиль',
-        'top10_label': 'Топ 10%',
-        'trend_growing': '🚀 Растущая',
-        'trend_declining': '📉 Угасающая',
-        'trend_stable': '⚖️ Стабильная',
-        'gap_strong': '💪 Сильная сторона',
-        'gap_weak': '⚠️ Белое пятно',
-        'collab_international': '🌍 Международная',
-        'lineage_index': '🔗 Индекс преемственности',
-        'citation_velocity': '⚡ Скорость',
-        'hot_topics': '🔥 Горячие темы',
-        'world_comparison': '🌍 Сравнение с миром',
-        'trend_analysis': '📈 Анализ трендов',
-        'collaboration_analysis': '👥 Анализ коллабораций',
-        'research_lineage': '🔬 Преемственность исследований'
+        'link_icon': '🔗'
     }
 }
 
@@ -608,44 +573,9 @@ def init_cache_db():
         )
     ''')
     
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS subfield_baselines_cache (
-            subfield_id TEXT,
-            year INTEGER,
-            avg_citations REAL,
-            median_citations REAL,
-            p90_citations REAL,
-            p95_citations REAL,
-            p99_citations REAL,
-            total_works INTEGER,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            expires_at DATETIME,
-            PRIMARY KEY (subfield_id, year)
-        )
-    ''')
-    
-    # Migration for existing databases
-    try:
-        cursor.execute('ALTER TABLE subfield_baselines_cache ADD COLUMN total_works INTEGER')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS citation_networks_cache (
-            source_id TEXT,
-            year_filter TEXT,
-            network_data TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            expires_at DATETIME,
-            PRIMARY KEY (source_id, year_filter)
-        )
-    ''')
-    
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_works_expires ON works_cache(expires_at)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_sources_expires ON sources_cache(expires_at)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_source_works_expires ON source_works_cache(expires_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_subfield_baselines_expires ON subfield_baselines_cache(expires_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_citation_networks_expires ON citation_networks_cache(expires_at)')
     
     conn.commit()
     conn.close()
@@ -727,73 +657,6 @@ def get_cached_source_works(source_id: str, year_filter: str) -> Optional[dict]:
         return json.loads(result[0])
     return None
 
-def cache_subfield_baseline(subfield_id: str, year: int, baseline_data: dict):
-    conn = get_cache_connection()
-    cursor = conn.cursor()
-    expires_at = datetime.now() + timedelta(days=30)
-    cursor.execute('''
-        INSERT OR REPLACE INTO subfield_baselines_cache 
-        (subfield_id, year, avg_citations, median_citations, p90_citations, p95_citations, p99_citations, total_works, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        subfield_id, year,
-        baseline_data.get('avg_citations'),
-        baseline_data.get('median_citations'),
-        baseline_data.get('p90_citations'),
-        baseline_data.get('p95_citations'),
-        baseline_data.get('p99_citations'),
-        baseline_data.get('total_works'),
-        expires_at
-    ))
-    conn.commit()
-    conn.close()
-
-def get_cached_subfield_baseline(subfield_id: str, year: int) -> Optional[dict]:
-    conn = get_cache_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT avg_citations, median_citations, p90_citations, p95_citations, p99_citations, total_works
-        FROM subfield_baselines_cache 
-        WHERE subfield_id = ? AND year = ? AND (expires_at IS NULL OR expires_at > ?)
-    ''', (subfield_id, year, datetime.now()))
-    result = cursor.fetchone()
-    conn.close()
-    if result:
-        return {
-            'avg_citations': result[0],
-            'median_citations': result[1],
-            'p90_citations': result[2],
-            'p95_citations': result[3],
-            'p99_citations': result[4],
-            'total_works': result[5]
-        }
-    return None
-
-def cache_citation_network(source_id: str, year_filter: str, network_data: dict):
-    conn = get_cache_connection()
-    cursor = conn.cursor()
-    expires_at = datetime.now() + timedelta(days=30)
-    cursor.execute('''
-        INSERT OR REPLACE INTO citation_networks_cache (source_id, year_filter, network_data, expires_at)
-        VALUES (?, ?, ?, ?)
-    ''', (source_id, year_filter, json.dumps(network_data), expires_at))
-    conn.commit()
-    conn.close()
-
-def get_cached_citation_network(source_id: str, year_filter: str) -> Optional[dict]:
-    conn = get_cache_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT network_data FROM citation_networks_cache 
-        WHERE source_id = ? AND year_filter = ? 
-        AND (expires_at IS NULL OR expires_at > ?)
-    ''', (source_id, year_filter, datetime.now()))
-    result = cursor.fetchone()
-    conn.close()
-    if result:
-        return json.loads(result[0])
-    return None
-
 def clear_old_cache():
     conn = get_cache_connection()
     cursor = conn.cursor()
@@ -801,8 +664,6 @@ def clear_old_cache():
     cursor.execute('DELETE FROM works_cache WHERE expires_at <= ?', (now_str,))
     cursor.execute('DELETE FROM sources_cache WHERE expires_at <= ?', (now_str,))
     cursor.execute('DELETE FROM source_works_cache WHERE expires_at <= ?', (now_str,))
-    cursor.execute('DELETE FROM subfield_baselines_cache WHERE expires_at <= ?', (now_str,))
-    cursor.execute('DELETE FROM citation_networks_cache WHERE expires_at <= ?', (now_str,))
     conn.commit()
     conn.close()
 
@@ -1109,196 +970,8 @@ def calculate_citation_activity(work: dict, current_year: int = None,
     
     return citations_total, citations_per_year, is_highly_cited
 
-def calculate_citation_velocity(work: dict, current_year: int = None) -> float:
-    """
-    Calculate citation velocity - percentage of citations received in last 12 months.
-    Returns value between 0 and 100.
-    """
-    if current_year is None:
-        current_year = datetime.now().year
-    
-    # Get yearly citation counts if available
-    counts_by_year = work.get('counts_by_year', [])
-    
-    if not counts_by_year:
-        return 0.0
-    
-    total_citations = work.get('cited_by_count', 0)
-    if total_citations == 0:
-        return 0.0
-    
-    # Sum citations from last 12 months
-    current_date = datetime.now()
-    recent_citations = 0
-    
-    for year_data in counts_by_year:
-        year = year_data.get('year', 0)
-        if year == current_year or year == current_year - 1:
-            recent_citations += year_data.get('cited_by_count', 0)
-    
-    velocity = (recent_citations / total_citations) * 100
-    return min(100.0, velocity)
-
-def get_citation_percentile(article_citations: int, baseline_data: dict) -> float:
-    """
-    Calculate percentile rank of article citations within its subfield and year.
-    Returns percentile (0-100).
-    """
-    if not baseline_data:
-        return 50.0  # Default if no baseline data
-    
-    p90 = baseline_data.get('p90_citations', 0)
-    p95 = baseline_data.get('p95_citations', 0)
-    p99 = baseline_data.get('p99_citations', 0)
-    median = baseline_data.get('median_citations', 0)
-    
-    if article_citations >= p99:
-        return 99.0
-    elif article_citations >= p95:
-        return 95.0
-    elif article_citations >= p90:
-        return 90.0
-    elif article_citations >= median:
-        return 75.0
-    elif article_citations >= median * 0.5:
-        return 50.0
-    elif article_citations > 0:
-        return 25.0
-    else:
-        return 10.0
-
-def calculate_fwci(article_citations: int, baseline_data: dict) -> float:
-    """
-    Calculate Field-Weighted Citation Impact.
-    FWCI = article_citations / world_average_citations_in_same_subfield_year
-    """
-    if not baseline_data:
-        return 1.0  # Default if no baseline data
-    
-    world_avg = baseline_data.get('avg_citations', 1.0)
-    if world_avg <= 0:
-        return 1.0
-    
-    fwci = article_citations / world_avg
-    return round(fwci, 2)
-
 # ============================================================================
-# WORLD BASELINE FETCHING
-# ============================================================================
-
-def fetch_world_baseline_for_subfield(subfield_id: str, year: int) -> Optional[dict]:
-    """
-    Fetch world baseline citation data for a specific subfield and year.
-    Returns dict with avg, median, percentiles.
-    """
-    # Check cache first
-    cached = get_cached_subfield_baseline(subfield_id, year)
-    if cached:
-        logger.info(f"Using cached baseline for {subfield_id}, {year}")
-        return cached
-    
-    logger.info(f"Fetching world baseline for subfield {subfield_id}, year {year}")
-    
-    try:
-        # Query OpenAlex for works in this subfield and year
-        url = f"{OPENALEX_BASE_URL}/works"
-        params = {
-            "filter": f"concepts.id:{subfield_id},publication_year:{year}",
-            "per-page": 200,
-            "mailto": MAILTO
-        }
-        
-        all_citations = []
-        cursor = "*"
-        
-        while True:
-            params["cursor"] = cursor
-            response = requests.get(url, params=params, headers=POLITE_POOL_HEADER, timeout=30)
-            
-            if response.status_code != 200:
-                logger.error(f"Error fetching baseline: {response.status_code}")
-                break
-            
-            data = response.json()
-            works = data.get('results', [])
-            
-            if not works:
-                break
-            
-            for work in works:
-                citations = work.get('cited_by_count', 0)
-                all_citations.append(citations)
-            
-            next_cursor = data.get('meta', {}).get('next_cursor')
-            if not next_cursor:
-                break
-            cursor = next_cursor
-            time.sleep(0.1)
-        
-        if not all_citations:
-            return None
-        
-        all_citations.sort()
-        total_works = len(all_citations)
-        
-        # Calculate statistics
-        avg_citations = sum(all_citations) / total_works if total_works > 0 else 0
-        
-        median_idx = total_works // 2
-        median_citations = all_citations[median_idx] if total_works > 0 else 0
-        
-        p90_idx = int(total_works * 0.9)
-        p90_citations = all_citations[p90_idx] if p90_idx < total_works else all_citations[-1] if all_citations else 0
-        
-        p95_idx = int(total_works * 0.95)
-        p95_citations = all_citations[p95_idx] if p95_idx < total_works else all_citations[-1] if all_citations else 0
-        
-        p99_idx = int(total_works * 0.99)
-        p99_citations = all_citations[p99_idx] if p99_idx < total_works else all_citations[-1] if all_citations else 0
-        
-        baseline_data = {
-            'avg_citations': avg_citations,
-            'median_citations': median_citations,
-            'p90_citations': p90_citations,
-            'p95_citations': p95_citations,
-            'p99_citations': p99_citations,
-            'total_works': total_works
-        }
-        
-        # Cache the result
-        cache_subfield_baseline(subfield_id, year, baseline_data)
-        
-        return baseline_data
-        
-    except Exception as e:
-        logger.error(f"Error fetching baseline for {subfield_id}, {year}: {str(e)}")
-        return None
-
-def get_subfield_id_from_article(article: dict) -> Optional[str]:
-    """
-    Extract subfield concept ID from article.
-    """
-    primary_topic = article.get('primary_topic', {})
-    if primary_topic:
-        subfield = primary_topic.get('subfield', {})
-        subfield_id = subfield.get('id')
-        if subfield_id:
-            # Extract ID from URL like https://openalex.org/subfields/1234
-            match = re.search(r'/subfields/(\d+)', subfield_id)
-            if match:
-                return f"https://openalex.org/subfields/{match.group(1)}"
-            return subfield_id
-    
-    # Alternative: look through concepts
-    concepts = article.get('concepts', [])
-    for concept in concepts:
-        if concept.get('level') == 2:  # Subfield level
-            return concept.get('id')
-    
-    return None
-
-# ============================================================================
-# ARTICLE DATA ENRICHMENT (UPDATED WITH NEW METRICS)
+# ARTICLE DATA ENRICHMENT
 # ============================================================================
 
 def extract_topic_hierarchy(article: dict) -> Tuple[str, str, str, str]:
@@ -1330,10 +1003,9 @@ def extract_topic_hierarchy(article: dict) -> Tuple[str, str, str, str]:
     
     return (domain, field, subfield, topic)
 
-def enrich_article_data(article: dict, threshold_total: int = None, threshold_per_year: int = None,
-                        world_baselines: Dict = None) -> dict:
+def enrich_article_data(article: dict, threshold_total: int = None, threshold_per_year: int = None) -> dict:
     """
-    Enrich article data with complete information including FWCI and percentile.
+    Enrich article data with complete information.
     """
     if not article:
         return {}
@@ -1362,7 +1034,6 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
     # Extract authors with proper Cyrillic handling
     authorships = article.get('authorships', [])
     authors = []
-    author_countries = []
     
     for authorship in authorships[:10]:  # Maximum 10 authors
         if authorship:
@@ -1398,20 +1069,10 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
                 
                 if author_name:
                     authors.append(author_name)
-                    
-                    # Extract country if available
-                    institutions = authorship.get('institutions', [])
-                    for inst in institutions:
-                        country_code = inst.get('country_code', '')
-                        if country_code and country_code not in author_countries:
-                            author_countries.append(country_code)
     
     authors_str = ', '.join(authors)
     if len(authorships) > 10:
         authors_str += f" et al. ({len(authorships)} authors total)"
-    
-    # Check for international collaboration
-    is_international = len(set(author_countries)) >= 2 if author_countries else False
     
     # Get topic hierarchy
     domain, field, subfield, primary_topic = extract_topic_hierarchy(article)
@@ -1420,25 +1081,6 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
     citations_total, citations_per_year, is_highly_cited = calculate_citation_activity(
         article, None, threshold_total, threshold_per_year
     )
-    
-    # Calculate citation velocity
-    citation_velocity = calculate_citation_velocity(article)
-    
-    # Get subfield ID and fetch/use world baseline
-    subfield_id = get_subfield_id_from_article(article)
-    publication_year = article.get('publication_year', 0)
-    
-    fwci = 1.0
-    percentile = 50.0
-    is_top10_percent = False
-    
-    if world_baselines and subfield_id and publication_year:
-        key = f"{subfield_id}_{publication_year}"
-        baseline = world_baselines.get(key)
-        if baseline:
-            fwci = calculate_fwci(citations_total, baseline)
-            percentile = get_citation_percentile(citations_total, baseline)
-            is_top10_percent = percentile >= 90.0
     
     # Get source (journal) info
     journal_name = ''
@@ -1451,27 +1093,17 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
                 host_venue = article.get('host_venue', {})
                 journal_name = host_venue.get('display_name', '')
     
-    # Get referenced works for lineage analysis
-    referenced_works = article.get('referenced_works', [])
-    
     enriched = {
         'doi': doi_clean,
         'doi_url': f"https://doi.org/{doi_clean}" if doi_clean else '',
         'title': article.get('title', ''),
-        'publication_year': publication_year,
+        'publication_year': article.get('publication_year', 0),
         'publication_date': article.get('publication_date', ''),
         'cited_by_count': citations_total,
         'citations_per_year': round(citations_per_year, 1),
-        'citation_velocity': round(citation_velocity, 1),
         'is_highly_cited': is_highly_cited,
-        'is_top10_percent': is_top10_percent,
-        'fwci': fwci,
-        'percentile': round(percentile, 1),
         'authors': authors_str,
         'authors_list': authors,
-        'author_countries': author_countries,
-        'is_international': is_international,
-        'num_authors': len(authors),
         'journal_name': journal_name,
         'volume': volume,
         'issue': issue,
@@ -1479,30 +1111,37 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
         'domain': domain,
         'field': field,
         'subfield': subfield,
-        'subfield_id': subfield_id,
         'primary_topic': primary_topic,
         'type': article.get('type', ''),
-        'is_oa': article.get('open_access', {}).get('is_oa', False) if article.get('open_access') else False,
-        'referenced_works': referenced_works,
-        'raw_work': article  # Keep reference to raw data for network analysis
+        'is_oa': article.get('open_access', {}).get('is_oa', False) if article.get('open_access') else False
     }
     
     return enriched
 
 # ============================================================================
-# HIERARCHICAL ARTICLE GROUPING (UPDATED)
+# HIERARCHICAL ARTICLE GROUPING
 # ============================================================================
 
-def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = None, threshold_per_year: int = None,
-                                world_baselines: Dict = None) -> Dict[str, Dict[str, Dict[str, Dict[str, List[dict]]]]]:
+def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = None, threshold_per_year: int = None) -> Dict[str, Dict[str, Dict[str, Dict[str, List[dict]]]]]:
     """
     Group articles by hierarchy: Domain -> Field -> Subfield -> Topic
-    Includes enriched data with FWCI and percentiles.
+    
+    Returns:
+        {
+            "Physical Sciences": {
+                "Materials Science": {
+                    "Materials Chemistry": {
+                        "Advancements in SOFC": [article1, article2],
+                        "Electronic Properties": [article3]
+                    }
+                }
+            }
+        }
     """
     hierarchy = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
     
     for article in articles:
-        enriched = enrich_article_data(article, threshold_total, threshold_per_year, world_baselines)
+        enriched = enrich_article_data(article, threshold_total, threshold_per_year)
         
         domain = enriched.get('domain', 'Unidentified')
         field = enriched.get('field', 'Unidentified')
@@ -1524,81 +1163,80 @@ def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = Non
 
 def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True) -> Dict:
     """
-    Calculate statistics for each hierarchy level including FWCI.
+    Calculate statistics for each hierarchy level.
+    
+    Returns:
+        {
+            "domain_name": {
+                "articles": 100,
+                "citations": 5000,
+                "avg_citations": 50.0,
+                "fields": {...}
+            }
+        }
     """
     stats = {}
     
     for domain, fields in hierarchy.items():
         domain_articles = 0
         domain_citations = 0
-        domain_fwci_sum = 0
         field_stats = {}
         
         for field, subfields in fields.items():
             field_articles = 0
             field_citations = 0
-            field_fwci_sum = 0
             subfield_stats = {}
             
             for subfield, topics in subfields.items():
                 subfield_articles = 0
                 subfield_citations = 0
-                subfield_fwci_sum = 0
                 topic_stats = {}
                 
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_fwci_sum = sum(a.get('fwci', 1.0) for a in articles)
                     
                     topic_stats[topic] = {
                         'articles': topic_articles,
                         'citations': topic_citations if include_metrics else None,
                         'avg_citations': (topic_citations / topic_articles) if (include_metrics and topic_articles > 0) else None,
-                        'avg_fwci': (topic_fwci_sum / topic_articles) if (include_metrics and topic_articles > 0) else 1.0,
                         'articles_list': articles
                     }
                     
                     subfield_articles += topic_articles
                     subfield_citations += topic_citations
-                    subfield_fwci_sum += topic_fwci_sum
                 
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
                     'citations': subfield_citations if include_metrics else None,
                     'avg_citations': (subfield_citations / subfield_articles) if (include_metrics and subfield_articles > 0) else None,
-                    'avg_fwci': (subfield_fwci_sum / subfield_articles) if (include_metrics and subfield_articles > 0) else 1.0,
                     'topics': topic_stats
                 }
                 
                 field_articles += subfield_articles
                 field_citations += subfield_citations
-                field_fwci_sum += subfield_fwci_sum
             
             field_stats[field] = {
                 'articles': field_articles,
                 'citations': field_citations if include_metrics else None,
                 'avg_citations': (field_citations / field_articles) if (include_metrics and field_articles > 0) else None,
-                'avg_fwci': (field_fwci_sum / field_articles) if (include_metrics and field_articles > 0) else 1.0,
                 'subfields': subfield_stats
             }
             
             domain_articles += field_articles
             domain_citations += field_citations
-            domain_fwci_sum += field_fwci_sum
         
         stats[domain] = {
             'articles': domain_articles,
             'citations': domain_citations if include_metrics else None,
             'avg_citations': (domain_citations / domain_articles) if (include_metrics and domain_articles > 0) else None,
-            'avg_fwci': (domain_fwci_sum / domain_articles) if (include_metrics and domain_articles > 0) else 1.0,
             'fields': field_stats
         }
     
     return stats
 
 # ============================================================================
-# HIERARCHY SORTING FUNCTIONS (UPDATED)
+# HIERARCHY SORTING FUNCTIONS
 # ============================================================================
 
 def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Dict:
@@ -1618,11 +1256,10 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
     
     # Sort domains
     if include_metrics:
-        # Sort by avg_fwci (descending) for better accuracy
+        # Sort by avg_citations (descending), then by name alphabetically
         domains_sorted = sorted(
             hierarchy.keys(),
             key=lambda d: (
-                -stats[d].get('avg_fwci', 0) if stats[d].get('avg_fwci') is not None else -float('inf'),
                 -stats[d].get('avg_citations', 0) if stats[d].get('avg_citations') is not None else -float('inf'),
                 d.lower()
             )
@@ -1644,7 +1281,6 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
             fields_sorted = sorted(
                 fields.keys(),
                 key=lambda f: (
-                    -domain_stats['fields'][f].get('avg_fwci', 0) if domain_stats['fields'][f].get('avg_fwci') is not None else -float('inf'),
                     -domain_stats['fields'][f].get('avg_citations', 0) if domain_stats['fields'][f].get('avg_citations') is not None else -float('inf'),
                     f.lower()
                 )
@@ -1665,7 +1301,6 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
                 subfields_sorted = sorted(
                     subfields.keys(),
                     key=lambda sf: (
-                        -field_stats['subfields'][sf].get('avg_fwci', 0) if field_stats['subfields'][sf].get('avg_fwci') is not None else -float('inf'),
                         -field_stats['subfields'][sf].get('avg_citations', 0) if field_stats['subfields'][sf].get('avg_citations') is not None else -float('inf'),
                         sf.lower()
                     )
@@ -1686,7 +1321,6 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
                     topics_sorted = sorted(
                         topics.keys(),
                         key=lambda t: (
-                            -subfield_stats['topics'][t].get('avg_fwci', 0) if subfield_stats['topics'][t].get('avg_fwci') is not None else -float('inf'),
                             -subfield_stats['topics'][t].get('avg_citations', 0) if subfield_stats['topics'][t].get('avg_citations') is not None else -float('inf'),
                             t.lower()
                         )
@@ -1707,367 +1341,6 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
         sorted_hierarchy[domain] = sorted_fields
     
     return sorted_hierarchy
-
-# ============================================================================
-# TOPIC TREND ANALYSIS (NEW)
-# ============================================================================
-
-def compute_topic_trends(articles: List[dict], hierarchy: Dict, min_articles_for_trend: int = 5) -> Dict:
-    """
-    Analyze temporal trends for topics and subfields.
-    Returns dict with trend direction and growth rate.
-    """
-    trends = {}
-    
-    # Group articles by year
-    articles_by_year = defaultdict(list)
-    for article in articles:
-        year = article.get('publication_year', 0)
-        if year > 0:
-            articles_by_year[year].append(article)
-    
-    if len(articles_by_year) < 3:
-        return trends
-    
-    # Analyze trends for each subfield and topic
-    for domain, fields in hierarchy.items():
-        for field, subfields in fields.items():
-            for subfield, topics in subfields.items():
-                # Analyze subfield trend
-                subfield_yearly_counts = defaultdict(int)
-                subfield_yearly_citations = defaultdict(list)
-                
-                for topic, topic_articles in topics.items():
-                    for article in topic_articles:
-                        year = article.get('publication_year', 0)
-                        if year > 0:
-                            subfield_yearly_counts[year] += 1
-                            subfield_yearly_citations[year].append(article.get('cited_by_count', 0))
-                
-                if len(subfield_yearly_counts) >= min_articles_for_trend:
-                    # Calculate trend using linear regression
-                    years = sorted(subfield_yearly_counts.keys())
-                    counts = [subfield_yearly_counts[y] for y in years]
-                    
-                    if len(years) >= 3:
-                        # Log transform for growth rate
-                        log_counts = [np.log(c + 1) for c in counts]
-                        slope, intercept, r_value, p_value, std_err = scipy_stats.linregress(years, log_counts)
-                        
-                        growth_rate = np.exp(slope) - 1
-                        trend_direction = 'growing' if slope > 0.05 and p_value < 0.05 else ('declining' if slope < -0.05 and p_value < 0.05 else 'stable')
-                        
-                        # Calculate average citations trend
-                        avg_citations_by_year = {}
-                        for year in years:
-                            if subfield_yearly_citations[year]:
-                                avg_citations_by_year[year] = np.mean(subfield_yearly_citations[year])
-                        
-                        if len(avg_citations_by_year) >= 3:
-                            years_cit = sorted(avg_citations_by_year.keys())
-                            cit_vals = [avg_citations_by_year[y] for y in years_cit]
-                            cit_slope, _, _, _, _ = scipy_stats.linregress(years_cit, cit_vals)
-                        else:
-                            cit_slope = 0
-                        
-                        trends[f"{subfield}"] = {
-                            'type': 'subfield',
-                            'domain': domain,
-                            'field': field,
-                            'trend': trend_direction,
-                            'growth_rate': round(growth_rate * 100, 1),
-                            'citations_trend': round(cit_slope, 2),
-                            'r_squared': round(r_value ** 2, 3),
-                            'momentum_score': round(growth_rate * (1 + abs(cit_slope) / 10), 3)
-                        }
-                
-                # Analyze each topic within subfield
-                for topic, topic_articles in topics.items():
-                    topic_yearly_counts = defaultdict(int)
-                    topic_yearly_citations = defaultdict(list)
-                    
-                    for article in topic_articles:
-                        year = article.get('publication_year', 0)
-                        if year > 0:
-                            topic_yearly_counts[year] += 1
-                            topic_yearly_citations[year].append(article.get('cited_by_count', 0))
-                    
-                    if len(topic_yearly_counts) >= min_articles_for_trend:
-                        years = sorted(topic_yearly_counts.keys())
-                        counts = [topic_yearly_counts[y] for y in years]
-                        
-                        if len(years) >= 3:
-                            log_counts = [np.log(c + 1) for c in counts]
-                            slope, intercept, r_value, p_value, std_err = scipy_stats.linregress(years, log_counts)
-                            
-                            growth_rate = np.exp(slope) - 1
-                            trend_direction = 'growing' if slope > 0.05 and p_value < 0.05 else ('declining' if slope < -0.05 and p_value < 0.05 else 'stable')
-                            
-                            trends[f"{subfield}|{topic}"] = {
-                                'type': 'topic',
-                                'domain': domain,
-                                'field': field,
-                                'subfield': subfield,
-                                'topic': topic,
-                                'trend': trend_direction,
-                                'growth_rate': round(growth_rate * 100, 1),
-                                'articles_count': len(topic_articles),
-                                'momentum_score': round(growth_rate * 100 * (1 + len(topic_articles) / 50), 2)
-                            }
-    
-    return trends
-
-# ============================================================================
-# WORLD COMPARISON AND GAP ANALYSIS (NEW)
-# ============================================================================
-
-def compute_world_comparison(hierarchy: Dict, world_baselines: Dict, total_world_articles_by_subfield: Dict = None) -> Dict:
-    """
-    Compare journal distribution with world distribution to identify gaps and strengths.
-    """
-    if not world_baselines:
-        return {}
-    
-    # Calculate journal distribution by subfield
-    journal_distribution = defaultdict(int)
-    journal_citations_by_subfield = defaultdict(list)
-    
-    for domain, fields in hierarchy.items():
-        for field, subfields in fields.items():
-            for subfield, topics in subfields.items():
-                for topic, articles in topics.items():
-                    for article in articles:
-                        subfield_name = article.get('subfield', subfield)
-                        journal_distribution[subfield_name] += 1
-                        journal_citations_by_subfield[subfield_name].append(article.get('cited_by_count', 0))
-    
-    total_journal_articles = sum(journal_distribution.values())
-    
-    # Calculate world distribution (simplified - would need actual world data)
-    # For now, use baseline data as proxy
-    world_distribution = {}
-    for key, baseline in world_baselines.items():
-        subfield_id, year = key.split('_')
-        # This is simplified - real implementation would need world article counts
-        pass
-    
-    # Compute gap analysis
-    gaps = {}
-    for subfield, journal_count in journal_distribution.items():
-        journal_share = journal_count / total_journal_articles if total_journal_articles > 0 else 0
-        
-        # Calculate average citations for this subfield in journal
-        avg_journal_citations = np.mean(journal_citations_by_subfield[subfield]) if journal_citations_by_subfield[subfield] else 0
-        
-        # Estimate world average from baselines (take most recent year)
-        world_avg_citations = 0
-        for key, baseline in world_baselines.items():
-            if subfield in key:
-                world_avg_citations = baseline.get('avg_citations', 0)
-                break
-        
-        # Calculate relative performance
-        citation_ratio = avg_journal_citations / world_avg_citations if world_avg_citations > 0 else 1.0
-        
-        gaps[subfield] = {
-            'journal_articles': journal_count,
-            'journal_share': round(journal_share * 100, 1),
-            'avg_journal_citations': round(avg_journal_citations, 1),
-            'world_avg_citations': round(world_avg_citations, 1),
-            'citation_ratio': round(citation_ratio, 2),
-            'gap_type': 'strong' if citation_ratio > 1.5 else ('weak' if citation_ratio < 0.7 else 'neutral')
-        }
-    
-    return gaps
-
-# ============================================================================
-# COLLABORATION ANALYSIS (NEW)
-# ============================================================================
-
-def analyze_collaboration_patterns(hierarchy: Dict) -> Dict:
-    """
-    Analyze collaboration patterns across topics.
-    """
-    collaboration_stats = {}
-    
-    for domain, fields in hierarchy.items():
-        for field, subfields in fields.items():
-            for subfield, topics in subfields.items():
-                for topic, articles in topics.items():
-                    num_authors_list = []
-                    international_count = 0
-                    citations_list = []
-                    
-                    for article in articles:
-                        num_authors = article.get('num_authors', 0)
-                        num_authors_list.append(num_authors)
-                        citations_list.append(article.get('cited_by_count', 0))
-                        if article.get('is_international', False):
-                            international_count += 1
-                    
-                    if num_authors_list:
-                        # Calculate correlation between authors and citations
-                        if len(num_authors_list) >= 3 and len(citations_list) >= 3:
-                            correlation, p_value = scipy_stats.spearmanr(num_authors_list, citations_list)
-                            correlation = correlation if not np.isnan(correlation) else 0
-                        else:
-                            correlation = 0
-                        
-                        # Find optimal author count (based on top 25% cited articles)
-                        sorted_by_citations = sorted(zip(citations_list, num_authors_list), reverse=True)
-                        top_quarter_idx = max(1, len(sorted_by_citations) // 4)
-                        top_articles = sorted_by_citations[:top_quarter_idx]
-                        optimal_authors = int(np.median([a for _, a in top_articles])) if top_articles else 0
-                        
-                        collaboration_stats[f"{subfield}|{topic}"] = {
-                            'topic': topic,
-                            'subfield': subfield,
-                            'field': field,
-                            'domain': domain,
-                            'avg_authors': round(np.mean(num_authors_list), 1),
-                            'median_authors': int(np.median(num_authors_list)),
-                            'optimal_authors': optimal_authors,
-                            'international_share': round(international_count / len(articles) * 100, 1),
-                            'author_citation_correlation': round(correlation, 2),
-                            'sample_size': len(articles)
-                        }
-    
-    return collaboration_stats
-
-# ============================================================================
-# RESEARCH LINEAGE INDEX (NEW)
-# ============================================================================
-
-def build_citation_network(articles: List[dict], source_id: str, year_filter: str) -> Dict:
-    """
-    Build citation network for journal articles to analyze research lineage.
-    """
-    # Check cache first
-    cached = get_cached_citation_network(source_id, year_filter)
-    if cached:
-        logger.info(f"Using cached citation network for {source_id}")
-        return cached
-    
-    # Create mapping from DOI to article index and work ID
-    doi_to_article = {}
-    article_dois = []
-    
-    for idx, article in enumerate(articles):
-        doi = article.get('doi', '')
-        if doi:
-            clean_doi = doi.replace('https://doi.org/', '')
-            doi_to_article[clean_doi] = idx
-            article_dois.append(clean_doi)
-    
-    # Build citation network
-    citation_graph = nx.DiGraph()
-    
-    # Add nodes
-    for idx, article in enumerate(articles):
-        title = article.get('title', f'Article_{idx}')
-        citation_graph.add_node(idx, title=title, citations=article.get('cited_by_count', 0))
-    
-    # Add edges for internal citations
-    internal_citations = 0
-    total_citations = 0
-    
-    for idx, article in enumerate(articles):
-        referenced_works = article.get('referenced_works', [])
-        article_citations = article.get('cited_by_count', 0)
-        total_citations += article_citations
-        
-        for ref in referenced_works:
-            # Check if reference is within journal
-            ref_doi = ref.replace('https://doi.org/', '')
-            if ref_doi in doi_to_article:
-                target_idx = doi_to_article[ref_doi]
-                citation_graph.add_edge(idx, target_idx)
-                internal_citations += 1
-    
-    # Calculate lineage index for each article
-    lineage_indices = {}
-    for idx in citation_graph.nodes:
-        in_degree = citation_graph.in_degree(idx)
-        total_refs = len(articles[idx].get('referenced_works', []))
-        lineage_index = in_degree / max(1, total_refs)
-        lineage_indices[idx] = round(lineage_index, 3)
-    
-    # Find clusters (strongly connected components)
-    components = list(nx.strongly_connected_components(citation_graph))
-    clusters = []
-    for comp in components:
-        if len(comp) >= 3:  # Only consider clusters of 3+ articles
-            cluster_articles = [articles[i] for i in comp]
-            cluster_citations = sum(a.get('cited_by_count', 0) for a in cluster_articles)
-            clusters.append({
-                'size': len(comp),
-                'articles': cluster_articles,
-                'total_citations': cluster_citations,
-                'avg_citations': cluster_citations / len(comp) if comp else 0
-            })
-    
-    # Calculate overall lineage index for journal
-    internal_citation_rate = internal_citations / max(1, total_citations)
-    
-    network_data = {
-        'graph': citation_graph,
-        'lineage_indices': lineage_indices,
-        'internal_citation_rate': round(internal_citation_rate, 3),
-        'clusters': clusters,
-        'total_nodes': citation_graph.number_of_nodes(),
-        'total_edges': citation_graph.number_of_edges()
-    }
-    
-    # Cache the network data (convert graph to serializable format)
-    serializable_data = {
-        'lineage_indices': lineage_indices,
-        'internal_citation_rate': internal_citation_rate,
-        'total_nodes': network_data['total_nodes'],
-        'total_edges': network_data['total_edges'],
-        'clusters': [
-            {
-                'size': c['size'],
-                'total_citations': c['total_citations'],
-                'avg_citations': c['avg_citations']
-            } for c in clusters
-        ]
-    }
-    cache_citation_network(source_id, year_filter, serializable_data)
-    
-    return network_data
-
-def calculate_topic_lineage_index(hierarchy: Dict, network_data: Dict) -> Dict:
-    """
-    Calculate lineage index for each topic based on citation network.
-    """
-    if not network_data:
-        return {}
-    
-    lineage_indices = network_data.get('lineage_indices', {})
-    
-    topic_lineage = defaultdict(list)
-    
-    # Map articles to topics
-    for domain, fields in hierarchy.items():
-        for field, subfields in fields.items():
-            for subfield, topics in subfields.items():
-                for topic, articles in topics.items():
-                    for idx, article in enumerate(articles):
-                        # Find article index in network (by DOI or position)
-                        # Simplified: use article index from list
-                        if idx in lineage_indices:
-                            topic_lineage[f"{subfield}|{topic}"].append(lineage_indices[idx])
-    
-    # Calculate average lineage per topic
-    result = {}
-    for topic_key, indices in topic_lineage.items():
-        result[topic_key] = {
-            'avg_lineage_index': round(np.mean(indices), 3),
-            'max_lineage_index': round(max(indices), 3),
-            'sample_size': len(indices)
-        }
-    
-    return result
 
 # ============================================================================
 # JOURNAL ABBREVIATION GENERATION
@@ -2127,15 +1400,13 @@ def format_message_with_variables(message: str, journal_name: str, years_str: st
     return message
 
 # ============================================================================
-# PDF REPORT GENERATION (RUSSIAN) WITH NEW ANALYTICS
+# PDF REPORT GENERATION (RUSSIAN) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
 def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int], 
                     hierarchy: Dict, logo_path: str = None, custom_message: str = None,
-                    include_metrics: bool = True, trends: Dict = None, 
-                    collaboration_stats: Dict = None, lineage_data: Dict = None,
-                    world_gaps: Dict = None) -> bytes:
-    """Generate PDF report in Russian with hierarchical grouping and new analytics"""
+                    include_metrics: bool = True) -> bytes:
+    """Generate PDF report in Russian with hierarchical grouping and citation metrics toggle"""
     
     import hashlib                    
     from reportlab.pdfbase import pdfmetrics
@@ -2146,8 +1417,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     import os
     
     font_found = False
-    russian_font_name = 'Helvetica'
+    russian_font_name = 'Helvetica'  # fallback
     
+    # List of possible font paths with Cyrillic support
     font_paths = [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
@@ -2459,19 +1731,12 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Spacer(1, 1*cm))
     
     if include_metrics:
-        avg_fwci = np.mean([a.get('fwci', 1.0) for domain in hierarchy.values() 
-                           for field in domain.values()
-                           for subfield in field.values()
-                           for topic in subfield.values()
-                           for a in topic]) if total_articles > 0 else 1.0
-        
         stats_data = [
             ["Показатель", "Значение"],
             ["Всего статей", str(total_articles)],
             ["Областей науки", str(total_domains)],
             ["Всего цитирований", str(total_citations)],
             ["Средняя цитируемость", f"{total_citations/total_articles:.2f}" if total_articles > 0 else "0"],
-            ["Средний FWCI", f"{avg_fwci:.2f}"],
             ["Активно цитируемые статьи", str(highly_cited)]
         ]
     else:
@@ -2494,125 +1759,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     ]))
     
     story.append(stats_table)
-    
-    # ========== HOT TOPICS SECTION (NEW) ==========
-    if trends:
-        story.append(PageBreak())
-        story.append(Paragraph("🔥 Горячие темы и тренды", title_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        # Sort topics by momentum score
-        sorted_topics = sorted(
-            [t for t in trends.values() if t.get('type') == 'topic' and t.get('trend') == 'growing'],
-            key=lambda x: x.get('momentum_score', 0), reverse=True
-        )[:10]
-        
-        if sorted_topics:
-            hot_topics_data = [["Тема", "Тренд", "Рост/год", "Статей"]]
-            for topic_data in sorted_topics:
-                hot_topics_data.append([
-                    clean_text(topic_data.get('topic', '')[:50]),
-                    "🚀 Растущая",
-                    f"+{topic_data.get('growth_rate', 0)}%",
-                    str(topic_data.get('articles_count', 0))
-                ])
-            
-            hot_table = Table(hot_topics_data, colWidths=[doc.width/2, doc.width/6, doc.width/6, doc.width/6])
-            hot_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E74C3C')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), russian_font_name),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(hot_table)
-    
-    # ========== WORLD COMPARISON SECTION (NEW) ==========
-    if world_gaps:
-        story.append(PageBreak())
-        story.append(Paragraph("🌍 Сравнение с мировыми исследованиями", title_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        strong_areas = [g for g in world_gaps.items() if g[1].get('gap_type') == 'strong'][:5]
-        weak_areas = [g for g in world_gaps.items() if g[1].get('gap_type') == 'weak'][:5]
-        
-        if strong_areas:
-            story.append(Paragraph("💪 Сильные стороны журнала", subtitle_style))
-            strong_data = [["Субполе", "Статей в журнале", "Citation Ratio"]]
-            for subfield, gap_data in strong_areas:
-                strong_data.append([
-                    clean_text(subfield[:40]),
-                    str(gap_data.get('journal_articles', 0)),
-                    f"{gap_data.get('citation_ratio', 1.0)}x"
-                ])
-            
-            strong_table = Table(strong_data, colWidths=[doc.width/2, doc.width/4, doc.width/4])
-            strong_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#27AE60')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), russian_font_name),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(strong_table)
-            story.append(Spacer(1, 0.5*cm))
-        
-        if weak_areas:
-            story.append(Paragraph("⚠️ Потенциальные белые пятна", subtitle_style))
-            weak_data = [["Субполе", "Статей в журнале", "Citation Ratio"]]
-            for subfield, gap_data in weak_areas:
-                weak_data.append([
-                    clean_text(subfield[:40]),
-                    str(gap_data.get('journal_articles', 0)),
-                    f"{gap_data.get('citation_ratio', 1.0)}x"
-                ])
-            
-            weak_table = Table(weak_data, colWidths=[doc.width/2, doc.width/4, doc.width/4])
-            weak_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E67E22')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), russian_font_name),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(weak_table)
-    
-    # ========== COLLABORATION ANALYSIS SECTION (NEW) ==========
-    if collaboration_stats:
-        story.append(PageBreak())
-        story.append(Paragraph("👥 Анализ коллабораций", title_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        # Find topics with highest international collaboration
-        high_collab = sorted(
-            [c for c in collaboration_stats.values() if c.get('international_share', 0) > 30],
-            key=lambda x: x.get('international_share', 0), reverse=True
-        )[:5]
-        
-        if high_collab:
-            collab_data = [["Тема", "Ср. авторов", "Междунар. доля", "Корреляция"]]
-            for collab in high_collab:
-                collab_data.append([
-                    clean_text(collab.get('topic', '')[:40]),
-                    str(collab.get('avg_authors', 0)),
-                    f"{collab.get('international_share', 0)}%",
-                    f"{collab.get('author_citation_correlation', 0):.2f}"
-                ])
-            
-            collab_table = Table(collab_data, colWidths=[doc.width/2.2, doc.width/6, doc.width/6, doc.width/6])
-            collab_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), russian_font_name),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(collab_table)
-    
     story.append(PageBreak())
     
-    # ========== TABLE OF CONTENTS ==========
+    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield) ==========
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
@@ -2622,9 +1771,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
+            domain_avg = domain_stats.get('avg_citations', 0)
             anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований, FWCI: {domain_avg_fwci:.2f}</a>', toc_domain_style))
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})</a>', toc_domain_style))
         else:
             anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
             story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей</a>', toc_domain_style))
@@ -2635,9 +1784,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
+                field_avg = field_stats.get('avg_citations', 0)
                 field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований, FWCI: {field_avg_fwci:.2f}', toc_field_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})', toc_field_style))
             else:
                 field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
                 story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей', toc_field_style))
@@ -2648,9 +1797,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
                     subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
-                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований, FWCI: {subfield_avg_fwci:.2f}', toc_subfield_style))
+                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})', toc_subfield_style))
                 else:
                     subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
                     story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей', toc_subfield_style))
@@ -2666,17 +1815,17 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
+            domain_avg = domain_stats.get('avg_citations', 0)
         else:
             domain_citations = 0
-            domain_avg_fwci = 1.0
+            domain_avg = 0
         
         anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
         story.append(anchor_para)
         
         if include_metrics:
-            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований, FWCI: {domain_avg_fwci:.2f}", domain_style))
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})", domain_style))
         else:
             story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей", domain_style))
         story.append(Spacer(1, 0.3*cm))
@@ -2687,17 +1836,17 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
+                field_avg = field_stats.get('avg_citations', 0)
             else:
                 field_citations = 0
-                field_avg_fwci = 1.0
+                field_avg = 0
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
             story.append(field_anchor_para)
             
             if include_metrics:
-                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований, FWCI: {field_avg_fwci:.2f}", field_style))
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})", field_style))
             else:
                 story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей", field_style))
             story.append(Spacer(1, 0.2*cm))
@@ -2708,17 +1857,17 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
                 else:
                     subfield_citations = 0
-                    subfield_avg_fwci = 1.0
+                    subfield_avg = 0
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
                 story.append(subfield_anchor_para)
                 
                 if include_metrics:
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований, FWCI: {subfield_avg_fwci:.2f}", subfield_style))
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})", subfield_style))
                 else:
                     story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} статей", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
@@ -2726,24 +1875,12 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg_fwci = np.mean([a.get('fwci', 1.0) for a in articles]) if articles else 1.0
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    # Get trend info for this topic
-                    trend_icon = ""
-                    if trends:
-                        topic_key = f"{subfield}|{topic}"
-                        if topic_key in trends:
-                            trend = trends[topic_key].get('trend', '')
-                            if trend == 'growing':
-                                trend_icon = " 🚀"
-                            elif trend == 'declining':
-                                trend_icon = " 📉"
-                    
                     if include_metrics:
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)}{trend_icon} — {topic_articles} статей, {topic_citations} цитирований, FWCI: {topic_avg_fwci:.2f}", topic_style))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})", topic_style))
                     else:
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)}{trend_icon} — {topic_articles} статей", topic_style))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -2771,28 +1908,16 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
-                        # Citation info with FWCI and percentile
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
-                        fwci = article.get('fwci', 1.0)
-                        percentile = article.get('percentile', 50.0)
                         is_highly = article.get('is_highly_cited', False)
-                        is_top10 = article.get('is_top10_percent', False)
-                        velocity = article.get('citation_velocity', 0)
                         
-                        citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year} | <b>FWCI:</b> {fwci:.2f} | <b>Перцентиль:</b> {percentile:.0f}%"
-                        if velocity > 30:
-                            citation_text += f" | ⚡ Скорость: {velocity:.0f}%"
+                        citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
                         if is_highly:
                             citation_text += " 🔥 Активно цитируемая"
-                        if is_top10:
-                            citation_text += " 🏆 Топ 10%"
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
-                        
-                        # Show international collaboration badge
-                        if article.get('is_international', False):
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;🌍 Международная коллаборация ({len(article.get('author_countries', []))} стран)", meta_style))
                         
                         doi_url = article.get('doi_url', '')
                         if doi_url:
@@ -2817,11 +1942,6 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Spacer(1, 0.5*cm))
     
     avg_overall = total_citations / total_articles if total_articles > 0 else 0
-    avg_fwci_overall = np.mean([a.get('fwci', 1.0) for domain in hierarchy.values() 
-                               for field in domain.values()
-                               for subfield in field.values()
-                               for topic in subfield.values()
-                               for a in topic]) if total_articles > 0 else 1.0
     
     conclusion_text = f"""
     Данный отчет содержит {total_articles} статей из журнала «{clean_text(journal_name)}», 
@@ -2830,11 +1950,10 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     
     if include_metrics:
         conclusion_text += f""" Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.
-    Средний Field-Weighted Citation Impact (FWCI) журнала: {avg_fwci_overall:.2f}.
     Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>"""
     
     conclusion_text += """
-    Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» и «Топ 10%» — 
+    Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» — 
     они демонстрируют высокий научный интерес и могут стать важной частью Вашего исследования.<br/><br/>
     
     Отчет сгенерирован автоматически с использованием данных OpenAlex API.
@@ -2901,15 +2020,13 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     return buffer.getvalue()
 
 # ============================================================================
-# PDF REPORT GENERATION (ENGLISH) WITH NEW ANALYTICS
+# PDF REPORT GENERATION (ENGLISH) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
 def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int], 
                     hierarchy: Dict, logo_path: str = None, custom_message: str = None,
-                    include_metrics: bool = True, trends: Dict = None,
-                    collaboration_stats: Dict = None, lineage_data: Dict = None,
-                    world_gaps: Dict = None) -> bytes:
-    """Generate PDF report in English with hierarchical grouping and new analytics"""
+                    include_metrics: bool = True) -> bytes:
+    """Generate PDF report in English with hierarchical grouping and citation metrics toggle"""
     
     def clean_text(text):
         if not text:
@@ -3177,11 +2294,6 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(Spacer(1, 1*cm))
     
     avg_overall = total_citations / total_articles if total_articles > 0 else 0
-    avg_fwci_overall = np.mean([a.get('fwci', 1.0) for domain in hierarchy.values() 
-                               for field in domain.values()
-                               for subfield in field.values()
-                               for topic in subfield.values()
-                               for a in topic]) if total_articles > 0 else 1.0
     
     if include_metrics:
         stats_data = [
@@ -3190,7 +2302,6 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             ["Research Domains", str(total_domains)],
             ["Total Citations", str(total_citations)],
             ["Average Citations per Article", f"{avg_overall:.2f}"],
-            ["Average FWCI", f"{avg_fwci_overall:.2f}"],
             ["Highly Cited Articles", str(highly_cited)]
         ]
     else:
@@ -3212,124 +2323,9 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     ]))
     
     story.append(stats_table)
-    
-    # ========== HOT TOPICS SECTION (NEW) ==========
-    if trends:
-        story.append(PageBreak())
-        story.append(Paragraph("🔥 Hot Topics & Trends", title_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        # Sort topics by momentum score
-        sorted_topics = sorted(
-            [t for t in trends.values() if t.get('type') == 'topic' and t.get('trend') == 'growing'],
-            key=lambda x: x.get('momentum_score', 0), reverse=True
-        )[:10]
-        
-        if sorted_topics:
-            hot_topics_data = [["Topic", "Trend", "Growth/Year", "Articles"]]
-            for topic_data in sorted_topics:
-                hot_topics_data.append([
-                    clean_text(topic_data.get('topic', '')[:50]),
-                    "🚀 Growing",
-                    f"+{topic_data.get('growth_rate', 0)}%",
-                    str(topic_data.get('articles_count', 0))
-                ])
-            
-            hot_table = Table(hot_topics_data, colWidths=[doc.width/2, doc.width/6, doc.width/6, doc.width/6])
-            hot_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E74C3C')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(hot_table)
-    
-    # ========== WORLD COMPARISON SECTION (NEW) ==========
-    if world_gaps:
-        story.append(PageBreak())
-        story.append(Paragraph("🌍 World Comparison", title_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        strong_areas = [g for g in world_gaps.items() if g[1].get('gap_type') == 'strong'][:5]
-        weak_areas = [g for g in world_gaps.items() if g[1].get('gap_type') == 'weak'][:5]
-        
-        if strong_areas:
-            story.append(Paragraph("💪 Journal Strengths", subtitle_style))
-            strong_data = [["Subfield", "Journal Articles", "Citation Ratio"]]
-            for subfield, gap_data in strong_areas:
-                strong_data.append([
-                    clean_text(subfield[:40]),
-                    str(gap_data.get('journal_articles', 0)),
-                    f"{gap_data.get('citation_ratio', 1.0)}x"
-                ])
-            
-            strong_table = Table(strong_data, colWidths=[doc.width/2, doc.width/4, doc.width/4])
-            strong_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#27AE60')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(strong_table)
-            story.append(Spacer(1, 0.5*cm))
-        
-        if weak_areas:
-            story.append(Paragraph("⚠️ Potential White Spots", subtitle_style))
-            weak_data = [["Subfield", "Journal Articles", "Citation Ratio"]]
-            for subfield, gap_data in weak_areas:
-                weak_data.append([
-                    clean_text(subfield[:40]),
-                    str(gap_data.get('journal_articles', 0)),
-                    f"{gap_data.get('citation_ratio', 1.0)}x"
-                ])
-            
-            weak_table = Table(weak_data, colWidths=[doc.width/2, doc.width/4, doc.width/4])
-            weak_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E67E22')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(weak_table)
-    
-    # ========== COLLABORATION ANALYSIS SECTION (NEW) ==========
-    if collaboration_stats:
-        story.append(PageBreak())
-        story.append(Paragraph("👥 Collaboration Analysis", title_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        high_collab = sorted(
-            [c for c in collaboration_stats.values() if c.get('international_share', 0) > 30],
-            key=lambda x: x.get('international_share', 0), reverse=True
-        )[:5]
-        
-        if high_collab:
-            collab_data = [["Topic", "Avg Authors", "International Share", "Correlation"]]
-            for collab in high_collab:
-                collab_data.append([
-                    clean_text(collab.get('topic', '')[:40]),
-                    str(collab.get('avg_authors', 0)),
-                    f"{collab.get('international_share', 0)}%",
-                    f"{collab.get('author_citation_correlation', 0):.2f}"
-                ])
-            
-            collab_table = Table(collab_data, colWidths=[doc.width/2.2, doc.width/6, doc.width/6, doc.width/6])
-            collab_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D5DBDB')),
-            ]))
-            story.append(collab_table)
-    
     story.append(PageBreak())
     
-    # ========== TABLE OF CONTENTS ==========
+    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield) ==========
     story.append(Paragraph("Table of Contents", title_style))
     story.append(Spacer(1, 0.5*cm))
     
@@ -3339,9 +2335,9 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
+            domain_avg = domain_stats.get('avg_citations', 0)
             anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
-            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations, FWCI: {domain_avg_fwci:.2f}</a>', toc_domain_style))
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})</a>', toc_domain_style))
         else:
             anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
             story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles</a>', toc_domain_style))
@@ -3352,9 +2348,9 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
+                field_avg = field_stats.get('avg_citations', 0)
                 field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
-                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations, FWCI: {field_avg_fwci:.2f}', toc_field_style))
+                story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})', toc_field_style))
             else:
                 field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
                 story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles', toc_field_style))
@@ -3365,9 +2361,9 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
                     subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
-                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations, FWCI: {subfield_avg_fwci:.2f}', toc_subfield_style))
+                    story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})', toc_subfield_style))
                 else:
                     subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
                     story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles', toc_subfield_style))
@@ -3383,17 +2379,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
+            domain_avg = domain_stats.get('avg_citations', 0)
         else:
             domain_citations = 0
-            domain_avg_fwci = 1.0
+            domain_avg = 0
         
         anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
         anchor_para = Paragraph(f'<a name="{anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
         story.append(anchor_para)
         
         if include_metrics:
-            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations, FWCI: {domain_avg_fwci:.2f}", domain_style))
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})", domain_style))
         else:
             story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles", domain_style))
         story.append(Spacer(1, 0.3*cm))
@@ -3404,17 +2400,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
+                field_avg = field_stats.get('avg_citations', 0)
             else:
                 field_citations = 0
-                field_avg_fwci = 1.0
+                field_avg = 0
             
             field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
             field_anchor_para = Paragraph(f'<a name="{field_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
             story.append(field_anchor_para)
             
             if include_metrics:
-                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations, FWCI: {field_avg_fwci:.2f}", field_style))
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})", field_style))
             else:
                 story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles", field_style))
             story.append(Spacer(1, 0.2*cm))
@@ -3425,17 +2421,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
                 else:
                     subfield_citations = 0
-                    subfield_avg_fwci = 1.0
+                    subfield_avg = 0
                 
                 subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
                 subfield_anchor_para = Paragraph(f'<a name="{subfield_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
                 story.append(subfield_anchor_para)
                 
                 if include_metrics:
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations, FWCI: {subfield_avg_fwci:.2f}", subfield_style))
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})", subfield_style))
                 else:
                     story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(subfield)} — {subfield_articles} articles", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
@@ -3443,24 +2439,12 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg_fwci = np.mean([a.get('fwci', 1.0) for a in articles]) if articles else 1.0
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
-                    # Get trend info
-                    trend_icon = ""
-                    if trends:
-                        topic_key = f"{subfield}|{topic}"
-                        if topic_key in trends:
-                            trend = trends[topic_key].get('trend', '')
-                            if trend == 'growing':
-                                trend_icon = " 🚀"
-                            elif trend == 'declining':
-                                trend_icon = " 📉"
-                    
                     if include_metrics:
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)}{trend_icon} — {topic_articles} articles, {topic_citations} citations, FWCI: {topic_avg_fwci:.2f}", topic_style))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})", topic_style))
                     else:
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)}{trend_icon} — {topic_articles} articles", topic_style))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles", topic_style))
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
@@ -3488,28 +2472,16 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
-                        # Citation info with FWCI and percentile
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
-                        fwci = article.get('fwci', 1.0)
-                        percentile = article.get('percentile', 50.0)
                         is_highly = article.get('is_highly_cited', False)
-                        is_top10 = article.get('is_top10_percent', False)
-                        velocity = article.get('citation_velocity', 0)
                         
-                        citation_text = f"<b>Citations:</b> {citations} | <b>per year:</b> {citations_per_year} | <b>FWCI:</b> {fwci:.2f} | <b>Percentile:</b> {percentile:.0f}%"
-                        if velocity > 30:
-                            citation_text += f" | ⚡ Velocity: {velocity:.0f}%"
+                        citation_text = f"<b>Citations:</b> {citations} | <b>per year:</b> {citations_per_year}"
                         if is_highly:
                             citation_text += " 🔥 Highly Cited"
-                        if is_top10:
-                            citation_text += " 🏆 Top 10%"
                         
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
-                        
-                        # International collaboration badge
-                        if article.get('is_international', False):
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;🌍 International collaboration ({len(article.get('author_countries', []))} countries)", meta_style))
                         
                         doi_url = article.get('doi_url', '')
                         if doi_url:
@@ -3540,11 +2512,10 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     if include_metrics:
         conclusion_text += f""" The overall average citation rate is {avg_overall:.2f} citations per article.
-    The journal's average Field-Weighted Citation Impact (FWCI) is {avg_fwci_overall:.2f}.
     Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>"""
     
     conclusion_text += """
-    We recommend paying special attention to articles marked as "Highly Cited" and "Top 10%" — 
+    We recommend paying special attention to articles marked as "Highly Cited" — 
     they demonstrate significant scientific interest and can become an important part 
     of your research.<br/><br/>
     
@@ -3557,12 +2528,13 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     # ========== APP LOGO AT THE END ==========
     try:
+        # Check for app logo in various locations
         possible_paths = [
-            "logo.png",
-            "./logo.png",
-            "app/logo.png",
-            os.path.join(os.path.dirname(__file__), "logo.png"),
-            os.path.join(os.getcwd(), "logo.png")
+            "logo.png",  # Current directory
+            "./logo.png",  # Relative path
+            "app/logo.png",  # If in subdirectory
+            os.path.join(os.path.dirname(__file__), "logo.png"),  # Absolute path
+            os.path.join(os.getcwd(), "logo.png")  # Current working directory
         ]
         
         app_logo_path = None
@@ -3572,17 +2544,20 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 break
         
         if app_logo_path:
+            # Verify with PIL
             from PIL import Image as PILImage
             pil_img = PILImage.open(app_logo_path)
             pil_img.verify()
             pil_img.close()
             
+            # Use Image from reportlab
             app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
             logger.info(f"App logo loaded successfully from: {app_logo_path}")
         else:
+            # If logo not found, show emoji
             story.append(Paragraph("📚", ParagraphStyle(
                 'LogoEmoji',
                 parent=styles['Normal'],
@@ -3595,6 +2570,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
     except Exception as e:
         logger.error(f"Could not load app logo: {e}")
+        # If logo fails to load, show emoji
         story.append(Paragraph("📚", ParagraphStyle(
             'LogoEmoji',
             parent=styles['Normal'],
@@ -3612,12 +2588,12 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     return buffer.getvalue()
 
 # ============================================================================
-# TXT REPORT GENERATION (RUSSIAN) WITH NEW ANALYTICS
+# TXT REPORT GENERATION (RUSSIAN) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
 def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None,
-                   include_metrics: bool = True, trends: Dict = None) -> str:
-    """Generate TXT report in Russian with hierarchical grouping and new analytics"""
+                   include_metrics: bool = True) -> str:
+    """Generate TXT report in Russian with hierarchical grouping and citation metrics toggle"""
     
     output = []
     
@@ -3655,11 +2631,6 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     # Statistics
     avg_overall = total_citations / total_articles if total_articles > 0 else 0
-    avg_fwci_overall = np.mean([a.get('fwci', 1.0) for domain in hierarchy.values() 
-                               for field in domain.values()
-                               for subfield in field.values()
-                               for topic in subfield.values()
-                               for a in topic]) if total_articles > 0 else 1.0
     
     output.append("СТАТИСТИКА")
     output.append("-" * 40)
@@ -3668,27 +2639,10 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     if include_metrics:
         output.append(f"Всего цитирований: {total_citations}")
         output.append(f"Средняя цитируемость: {avg_overall:.2f}")
-        output.append(f"Средний FWCI: {avg_fwci_overall:.2f}")
         output.append(f"Активно цитируемые статьи: {highly_cited}")
     output.append("")
     output.append("=" * 80)
     output.append("")
-    
-    # Hot topics section
-    if trends:
-        output.append("🔥 ГОРЯЧИЕ ТЕМЫ И ТРЕНДЫ")
-        output.append("-" * 40)
-        sorted_topics = sorted(
-            [t for t in trends.values() if t.get('type') == 'topic' and t.get('trend') == 'growing'],
-            key=lambda x: x.get('momentum_score', 0), reverse=True
-        )[:10]
-        
-        if sorted_topics:
-            for topic_data in sorted_topics:
-                output.append(f"  • {topic_data.get('topic', '')} — рост: +{topic_data.get('growth_rate', 0)}%/год, статей: {topic_data.get('articles_count', 0)}")
-        output.append("")
-        output.append("=" * 80)
-        output.append("")
     
     # Table of Contents
     output.append("СОДЕРЖАНИЕ")
@@ -3699,8 +2653,8 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
-            output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований, FWCI: {domain_avg_fwci:.2f}")
+            domain_avg = domain_stats.get('avg_citations', 0)
+            output.append(f"{domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
         else:
             output.append(f"{domain} — {domain_articles} статей")
         
@@ -3710,8 +2664,8 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
-                output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований, FWCI: {field_avg_fwci:.2f}")
+                field_avg = field_stats.get('avg_citations', 0)
+                output.append(f"  └── {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f})")
             else:
                 output.append(f"  └── {field} — {field_articles} статей")
             
@@ -3721,8 +2675,8 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
-                    output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований, FWCI: {subfield_avg_fwci:.2f}")
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                    output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})")
                 else:
                     output.append(f"      └── {subfield} — {subfield_articles} статей")
     
@@ -3737,15 +2691,15 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
+            domain_avg = domain_stats.get('avg_citations', 0)
         else:
             domain_citations = 0
-            domain_avg_fwci = 1.0
+            domain_avg = 0
         
         output.append("")
         output.append("█" * 80)
         if include_metrics:
-            output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей, {domain_citations} цитирований, FWCI: {domain_avg_fwci:.2f}")
+            output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей, {domain_citations} цитирований (avg: {domain_avg:.1f})")
         else:
             output.append(f"ОБЛАСТЬ: {domain} — {domain_articles} статей")
         output.append("█" * 80)
@@ -3757,13 +2711,13 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
+                field_avg = field_stats.get('avg_citations', 0)
             else:
                 field_citations = 0
-                field_avg_fwci = 1.0
+                field_avg = 0
             
             if include_metrics:
-                output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей, {field_citations} цитирований, FWCI: {field_avg_fwci:.2f} ▓▓▓")
+                output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей, {field_citations} цитирований (avg: {field_avg:.1f}) ▓▓▓")
             else:
                 output.append(f"▓▓▓ ПОЛЕ: {field} — {field_articles} статей ▓▓▓")
             output.append("")
@@ -3774,13 +2728,13 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
                 else:
                     subfield_citations = 0
-                    subfield_avg_fwci = 1.0
+                    subfield_avg = 0
                 
                 if include_metrics:
-                    output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей, {subfield_citations} цитирований, FWCI: {subfield_avg_fwci:.2f} ▒▒▒")
+                    output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f}) ▒▒▒")
                 else:
                     output.append(f"▒▒▒ ПОДПОЛЕ: {subfield} — {subfield_articles} статей ▒▒▒")
                 output.append("")
@@ -3788,23 +2742,12 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg_fwci = np.mean([a.get('fwci', 1.0) for a in articles]) if articles else 1.0
-                    
-                    # Get trend info
-                    trend_icon = ""
-                    if trends:
-                        topic_key = f"{subfield}|{topic}"
-                        if topic_key in trends:
-                            trend = trends[topic_key].get('trend', '')
-                            if trend == 'growing':
-                                trend_icon = " 🚀"
-                            elif trend == 'declining':
-                                trend_icon = " 📉"
+                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
                     if include_metrics:
-                        output.append(f"  ● ТЕМА: {topic}{trend_icon} — {topic_articles} статей, {topic_citations} цитирований, FWCI: {topic_avg_fwci:.2f}")
+                        output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})")
                     else:
-                        output.append(f"  ● ТЕМА: {topic}{trend_icon} — {topic_articles} статей")
+                        output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей")
                     output.append("")
                     
                     for idx, article in enumerate(articles, 1):
@@ -3823,21 +2766,11 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                         
                         output.append(", ".join(meta_parts))
                         
-                        # Citation info with FWCI and percentile
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
-                        fwci = article.get('fwci', 1.0)
-                        percentile = article.get('percentile', 50.0)
                         highly = " 🔥 АКТИВНО ЦИТИРУЕМАЯ" if article.get('is_highly_cited') else ""
-                        top10 = " 🏆 ТОП 10%" if article.get('is_top10_percent') else ""
-                        velocity = article.get('citation_velocity', 0)
-                        
-                        output.append(f"       Цитирований: {citations} | в год: {citations_per_year} | FWCI: {fwci:.2f} | Перцентиль: {percentile:.0f}%{highly}{top10}")
-                        if velocity > 30:
-                            output.append(f"       ⚡ Скорость набора: {velocity:.0f}%")
-                        
-                        if article.get('is_international', False):
-                            output.append(f"       🌍 Международная коллаборация ({len(article.get('author_countries', []))} стран)")
+                        output.append(f"       Цитирований: {citations} | в год: {citations_per_year}{highly}")
                         
                         if article.get('doi_url'):
                             output.append(f"       DOI: {article.get('doi_url')}")
@@ -3863,14 +2796,13 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     if include_metrics:
         output.append(f"Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.")
-        output.append(f"Средний Field-Weighted Citation Impact (FWCI) журнала: {avg_fwci_overall:.2f}.")
         output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     else:
         output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     
     output.append("в Ваши научные работы.")
     output.append("")
-    output.append("Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» и «Топ 10%» —")
+    output.append("Рекомендуем обратить особое внимание на статьи с пометкой «Активно цитируемая» —")
     output.append("они демонстрируют высокий научный интерес и могут стать важной частью")
     output.append("Вашего исследования.")
     output.append("")
@@ -3882,12 +2814,12 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     return "\n".join(output)
 
 # ============================================================================
-# TXT REPORT GENERATION (ENGLISH) WITH NEW ANALYTICS
+# TXT REPORT GENERATION (ENGLISH) WITH HIERARCHY AND METRICS TOGGLE
 # ============================================================================
 
 def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom_message: str = None,
-                   include_metrics: bool = True, trends: Dict = None) -> str:
-    """Generate TXT report in English with hierarchical grouping and new analytics"""
+                   include_metrics: bool = True) -> str:
+    """Generate TXT report in English with hierarchical grouping and citation metrics toggle"""
     
     output = []
     
@@ -3925,11 +2857,6 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     # Statistics
     avg_overall = total_citations / total_articles if total_articles > 0 else 0
-    avg_fwci_overall = np.mean([a.get('fwci', 1.0) for domain in hierarchy.values() 
-                               for field in domain.values()
-                               for subfield in field.values()
-                               for topic in subfield.values()
-                               for a in topic]) if total_articles > 0 else 1.0
     
     output.append("STATISTICS")
     output.append("-" * 40)
@@ -3938,27 +2865,10 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     if include_metrics:
         output.append(f"Total Citations: {total_citations}")
         output.append(f"Average Citations per Article: {avg_overall:.2f}")
-        output.append(f"Average FWCI: {avg_fwci_overall:.2f}")
         output.append(f"Highly Cited Articles: {highly_cited}")
     output.append("")
     output.append("=" * 80)
     output.append("")
-    
-    # Hot topics section
-    if trends:
-        output.append("🔥 HOT TOPICS & TRENDS")
-        output.append("-" * 40)
-        sorted_topics = sorted(
-            [t for t in trends.values() if t.get('type') == 'topic' and t.get('trend') == 'growing'],
-            key=lambda x: x.get('momentum_score', 0), reverse=True
-        )[:10]
-        
-        if sorted_topics:
-            for topic_data in sorted_topics:
-                output.append(f"  • {topic_data.get('topic', '')} — growth: +{topic_data.get('growth_rate', 0)}%/year, articles: {topic_data.get('articles_count', 0)}")
-        output.append("")
-        output.append("=" * 80)
-        output.append("")
     
     # Table of Contents
     output.append("TABLE OF CONTENTS")
@@ -3969,8 +2879,8 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
-            output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations, FWCI: {domain_avg_fwci:.2f}")
+            domain_avg = domain_stats.get('avg_citations', 0)
+            output.append(f"{domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
         else:
             output.append(f"{domain} — {domain_articles} articles")
         
@@ -3980,8 +2890,8 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
-                output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations, FWCI: {field_avg_fwci:.2f}")
+                field_avg = field_stats.get('avg_citations', 0)
+                output.append(f"  └── {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f})")
             else:
                 output.append(f"  └── {field} — {field_articles} articles")
             
@@ -3991,8 +2901,8 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
-                    output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations, FWCI: {subfield_avg_fwci:.2f}")
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
+                    output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})")
                 else:
                     output.append(f"      └── {subfield} — {subfield_articles} articles")
     
@@ -4007,15 +2917,15 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
         
         if include_metrics:
             domain_citations = domain_stats.get('citations', 0)
-            domain_avg_fwci = domain_stats.get('avg_fwci', 1.0)
+            domain_avg = domain_stats.get('avg_citations', 0)
         else:
             domain_citations = 0
-            domain_avg_fwci = 1.0
+            domain_avg = 0
         
         output.append("")
         output.append("█" * 80)
         if include_metrics:
-            output.append(f"DOMAIN: {domain} — {domain_articles} articles, {domain_citations} citations, FWCI: {domain_avg_fwci:.2f}")
+            output.append(f"DOMAIN: {domain} — {domain_articles} articles, {domain_citations} citations (avg: {domain_avg:.1f})")
         else:
             output.append(f"DOMAIN: {domain} — {domain_articles} articles")
         output.append("█" * 80)
@@ -4027,13 +2937,13 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
             
             if include_metrics:
                 field_citations = field_stats.get('citations', 0)
-                field_avg_fwci = field_stats.get('avg_fwci', 1.0)
+                field_avg = field_stats.get('avg_citations', 0)
             else:
                 field_citations = 0
-                field_avg_fwci = 1.0
+                field_avg = 0
             
             if include_metrics:
-                output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles, {field_citations} citations, FWCI: {field_avg_fwci:.2f} ▓▓▓")
+                output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles, {field_citations} citations (avg: {field_avg:.1f}) ▓▓▓")
             else:
                 output.append(f"▓▓▓ FIELD: {field} — {field_articles} articles ▓▓▓")
             output.append("")
@@ -4044,13 +2954,13 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                 
                 if include_metrics:
                     subfield_citations = subfield_stats.get('citations', 0)
-                    subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0)
+                    subfield_avg = subfield_stats.get('avg_citations', 0)
                 else:
                     subfield_citations = 0
-                    subfield_avg_fwci = 1.0
+                    subfield_avg = 0
                 
                 if include_metrics:
-                    output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles, {subfield_citations} citations, FWCI: {subfield_avg_fwci:.2f} ▒▒▒")
+                    output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f}) ▒▒▒")
                 else:
                     output.append(f"▒▒▒ SUBFIELD: {subfield} — {subfield_articles} articles ▒▒▒")
                 output.append("")
@@ -4058,23 +2968,12 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg_fwci = np.mean([a.get('fwci', 1.0) for a in articles]) if articles else 1.0
-                    
-                    # Get trend info
-                    trend_icon = ""
-                    if trends:
-                        topic_key = f"{subfield}|{topic}"
-                        if topic_key in trends:
-                            trend = trends[topic_key].get('trend', '')
-                            if trend == 'growing':
-                                trend_icon = " 🚀"
-                            elif trend == 'declining':
-                                trend_icon = " 📉"
+                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
                     
                     if include_metrics:
-                        output.append(f"  ● TOPIC: {topic}{trend_icon} — {topic_articles} articles, {topic_citations} citations, FWCI: {topic_avg_fwci:.2f}")
+                        output.append(f"  ● TOPIC: {topic} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})")
                     else:
-                        output.append(f"  ● TOPIC: {topic}{trend_icon} — {topic_articles} articles")
+                        output.append(f"  ● TOPIC: {topic} — {topic_articles} articles")
                     output.append("")
                     
                     for idx, article in enumerate(articles, 1):
@@ -4093,21 +2992,11 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                         
                         output.append(", ".join(meta_parts))
                         
-                        # Citation info with FWCI and percentile
+                        # Always show citation info for individual articles
                         citations = article.get('cited_by_count', 0)
                         citations_per_year = article.get('citations_per_year', 0)
-                        fwci = article.get('fwci', 1.0)
-                        percentile = article.get('percentile', 50.0)
                         highly = " 🔥 HIGHLY CITED" if article.get('is_highly_cited') else ""
-                        top10 = " 🏆 TOP 10%" if article.get('is_top10_percent') else ""
-                        velocity = article.get('citation_velocity', 0)
-                        
-                        output.append(f"       Citations: {citations} | per year: {citations_per_year} | FWCI: {fwci:.2f} | Percentile: {percentile:.0f}%{highly}{top10}")
-                        if velocity > 30:
-                            output.append(f"       ⚡ Velocity: {velocity:.0f}%")
-                        
-                        if article.get('is_international', False):
-                            output.append(f"       🌍 International collaboration ({len(article.get('author_countries', []))} countries)")
+                        output.append(f"       Citations: {citations} | per year: {citations_per_year}{highly}")
                         
                         if article.get('doi_url'):
                             output.append(f"       DOI: {article.get('doi_url')}")
@@ -4134,13 +3023,12 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     if include_metrics:
         output.append(f"The overall average citation rate is {avg_overall:.2f} citations per article.")
-        output.append(f"The journal's average Field-Weighted Citation Impact (FWCI) is {avg_fwci_overall:.2f}.")
         output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     else:
         output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     
     output.append("")
-    output.append("We recommend paying special attention to articles marked as 'Highly Cited' and 'Top 10%' —")
+    output.append("We recommend paying special attention to articles marked as 'Highly Cited' —")
     output.append("they demonstrate significant scientific interest and can become an important part")
     output.append("of your research.")
     output.append("")
@@ -4152,7 +3040,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     return "\n".join(output)
 
 # ============================================================================
-# APPLICATION INTERFACE (UPDATED)
+# APPLICATION INTERFACE
 # ============================================================================
 
 def main():
@@ -4191,14 +3079,6 @@ def main():
         st.session_state.threshold_total = None
     if 'threshold_per_year' not in st.session_state:
         st.session_state.threshold_per_year = None
-    if 'world_baselines' not in st.session_state:
-        st.session_state.world_baselines = None
-    if 'trends' not in st.session_state:
-        st.session_state.trends = None
-    if 'collaboration_stats' not in st.session_state:
-        st.session_state.collaboration_stats = None
-    if 'world_gaps' not in st.session_state:
-        st.session_state.world_gaps = None
     
     # Header
     import os
@@ -4307,41 +3187,12 @@ def main():
                                 articles = fetch_articles_by_journal(source_id, years)
                                 if articles:
                                     with st.spinner(t['analyzing']):
-                                        # Fetch world baselines for normalization
-                                        st.session_state.world_baselines = {}
-                                        unique_subfields = set()
-                                        
-                                        # First, collect unique subfields from articles
-                                        for article in articles:
-                                            subfield_id = get_subfield_id_from_article(article)
-                                            year = article.get('publication_year', 0)
-                                            if subfield_id and year:
-                                                unique_subfields.add((subfield_id, year))
-                                        
-                                        # Fetch baselines (with progress indicator)
-                                        baseline_progress = st.progress(0)
-                                        for idx, (subfield_id, year) in enumerate(unique_subfields):
-                                            baseline = fetch_world_baseline_for_subfield(subfield_id, year)
-                                            if baseline:
-                                                key = f"{subfield_id}_{year}"
-                                                st.session_state.world_baselines[key] = baseline
-                                            baseline_progress.progress((idx + 1) / max(1, len(unique_subfields)))
-                                        baseline_progress.empty()
-                                        
-                                        # Group articles with enriched data including FWCI
+                                        # Get thresholds from session state
                                         threshold_total = st.session_state.threshold_total
                                         threshold_per_year = st.session_state.threshold_per_year
-                                        hierarchy_unsorted = group_articles_by_hierarchy(
-                                            articles, threshold_total, threshold_per_year, st.session_state.world_baselines
-                                        )
+                                        hierarchy_unsorted = group_articles_by_hierarchy(articles, threshold_total, threshold_per_year)
                                         # Apply sorting based on current include_metrics setting
                                         hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, st.session_state.include_metrics)
-                                        
-                                        # Compute additional analytics
-                                        st.session_state.trends = compute_topic_trends(articles, hierarchy)
-                                        st.session_state.collaboration_stats = analyze_collaboration_patterns(hierarchy)
-                                        st.session_state.world_gaps = compute_world_comparison(hierarchy, st.session_state.world_baselines)
-                                        
                                         st.session_state.articles = articles
                                         st.session_state.hierarchy = hierarchy
                                         st.session_state.step = 3
@@ -4435,11 +3286,9 @@ def main():
                     threshold_total = st.session_state.threshold_total
                     threshold_per_year = st.session_state.threshold_per_year
                     hierarchy_unsorted = group_articles_by_hierarchy(
-                        st.session_state.articles, threshold_total, threshold_per_year, st.session_state.world_baselines
+                        st.session_state.articles, threshold_total, threshold_per_year
                     )
                     st.session_state.hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, include_metrics)
-                    st.session_state.trends = compute_topic_trends(st.session_state.articles, st.session_state.hierarchy)
-                    st.session_state.collaboration_stats = analyze_collaboration_patterns(st.session_state.hierarchy)
                     st.rerun()
             
             # Threshold inputs (only shown when metrics are included)
@@ -4474,11 +3323,9 @@ def main():
                     st.session_state.threshold_per_year = threshold_per_year
                     # Recalculate hierarchy with new thresholds
                     hierarchy_unsorted = group_articles_by_hierarchy(
-                        st.session_state.articles, threshold_total, threshold_per_year, st.session_state.world_baselines
+                        st.session_state.articles, threshold_total, threshold_per_year
                     )
                     st.session_state.hierarchy = sort_hierarchy_by_rules(hierarchy_unsorted, st.session_state.include_metrics)
-                    st.session_state.trends = compute_topic_trends(st.session_state.articles, st.session_state.hierarchy)
-                    st.session_state.collaboration_stats = analyze_collaboration_patterns(st.session_state.hierarchy)
                     st.rerun()
             
             # Custom message section
@@ -4521,10 +3368,9 @@ def main():
                 domain_stats = stats.get(domain, {})
                 domain_articles = domain_stats.get('articles', 0)
                 domain_citations = domain_stats.get('citations', 0) if st.session_state.include_metrics else 0
-                domain_avg_fwci = domain_stats.get('avg_fwci', 1.0) if st.session_state.include_metrics else 1.0
                 
                 if st.session_state.include_metrics:
-                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}, FWCI: {domain_avg_fwci:.2f}"
+                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}"
                 else:
                     expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}"
                 
@@ -4533,10 +3379,9 @@ def main():
                         field_stats = domain_stats.get('fields', {}).get(field, {})
                         field_articles = field_stats.get('articles', 0)
                         field_citations = field_stats.get('citations', 0) if st.session_state.include_metrics else 0
-                        field_avg_fwci = field_stats.get('avg_fwci', 1.0) if st.session_state.include_metrics else 1.0
                         
                         if st.session_state.include_metrics:
-                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}, FWCI: {field_avg_fwci:.2f}")
+                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}")
                         else:
                             st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}")
                         
@@ -4544,48 +3389,30 @@ def main():
                             subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                             subfield_articles = subfield_stats.get('articles', 0)
                             subfield_citations = subfield_stats.get('citations', 0) if st.session_state.include_metrics else 0
-                            subfield_avg_fwci = subfield_stats.get('avg_fwci', 1.0) if st.session_state.include_metrics else 1.0
                             
                             if st.session_state.include_metrics:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}, FWCI: {subfield_avg_fwci:.2f}")
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}")
                             else:
                                 st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}")
                             
                             for topic, articles in topics.items():
                                 topic_articles = len(articles)
                                 topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                                topic_avg_fwci = np.mean([a.get('fwci', 1.0) for a in articles]) if articles else 1.0
-                                
-                                # Get trend info
-                                trend_icon = ""
-                                if st.session_state.trends:
-                                    topic_key = f"{subfield}|{topic}"
-                                    if topic_key in st.session_state.trends:
-                                        trend = st.session_state.trends[topic_key].get('trend', '')
-                                        if trend == 'growing':
-                                            trend_icon = " 🚀"
-                                        elif trend == 'declining':
-                                            trend_icon = " 📉"
                                 
                                 if st.session_state.include_metrics:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}{trend_icon}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']}, FWCI: {topic_avg_fwci:.2f}")
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']}")
                                 else:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}{trend_icon}** — {topic_articles} {t['articles_count']}")
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}")
                                 
-                                for idx, article in enumerate(articles[:5]):  # Show first 5 articles for compactness
-                                    fwci = article.get('fwci', 1.0)
-                                    percentile = article.get('percentile', 50.0)
-                                    velocity = article.get('citation_velocity', 0)
-                                    is_top10 = article.get('is_top10_percent', False)
-                                    
+                                for idx, article in enumerate(articles[:5]):  
+                                    title = article.get('title') or 'No title'
+                                    authors = article.get('authors') or 'N/A'
                                     st.markdown(f"""
                                     <div style="padding: 8px; margin: 4px 0 4px 60px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;">
-                                        <b>{idx+1}. {article.get('title', 'No title')[:80]}{'...' if len(article.get('title', '')) > 80 else ''}</b><br>
-                                        {t['authors_icon']} {article.get('authors', 'N/A')[:80]}<br>
-                                        📊 {t['citations']}: {article.get('cited_by_count', 0)} ({t['citations_per_year']}: {article.get('citations_per_year', 0)}) | FWCI: {fwci:.2f} | Перцентиль: {percentile:.0f}%
-                                        {f' ⚡ {velocity:.0f}%' if velocity > 30 else ''}
-                                        {f' 🔥' if article.get('is_highly_cited') else ''}
-                                        {f' 🏆' if is_top10 else ''}<br>
+                                        <b>{idx+1}. {title[:80]}{'...' if len(title) > 80 else ''}</b><br>
+                                        {t['authors_icon']} {authors[:80]}<br>
+                                        📊 {t['citations']}: {article.get('cited_by_count', 0)} ({t['citations_per_year']}: {article.get('citations_per_year', 0)})
+                                        {f' 🔥' if article.get('is_highly_cited') else ''}<br>
                                         {t['link_icon']} <a href="{article.get('doi_url', '#')}" target="_blank">{t['view_article']}</a>
                                     </div>
                                     """, unsafe_allow_html=True)
@@ -4612,11 +3439,7 @@ def main():
                     hierarchy, 
                     st.session_state.journal_logo, 
                     st.session_state.custom_message_en,
-                    st.session_state.include_metrics,
-                    st.session_state.trends,
-                    st.session_state.collaboration_stats,
-                    None,  # lineage_data (optional)
-                    st.session_state.world_gaps
+                    st.session_state.include_metrics
                 )
                 filename_en = generate_filename(journal_abbr, years, 'en', 'pdf')
                 st.download_button(
@@ -4636,11 +3459,7 @@ def main():
                     hierarchy, 
                     st.session_state.journal_logo,
                     st.session_state.custom_message_ru,
-                    st.session_state.include_metrics,
-                    st.session_state.trends,
-                    st.session_state.collaboration_stats,
-                    None,  # lineage_data (optional)
-                    st.session_state.world_gaps
+                    st.session_state.include_metrics
                 )
                 filename_ru = generate_filename(journal_abbr, years, 'ru', 'pdf')
                 st.download_button(
@@ -4661,8 +3480,7 @@ def main():
                     years, 
                     hierarchy, 
                     st.session_state.custom_message_en,
-                    st.session_state.include_metrics,
-                    st.session_state.trends
+                    st.session_state.include_metrics
                 )
                 filename_en_txt = generate_filename(journal_abbr, years, 'en', 'txt')
                 st.download_button(
@@ -4680,8 +3498,7 @@ def main():
                     years, 
                     hierarchy, 
                     st.session_state.custom_message_ru,
-                    st.session_state.include_metrics,
-                    st.session_state.trends
+                    st.session_state.include_metrics
                 )
                 filename_ru_txt = generate_filename(journal_abbr, years, 'ru', 'txt')
                 st.download_button(
@@ -4698,8 +3515,7 @@ def main():
             if st.button(t['new_analysis_btn'], use_container_width=True):
                 # Clear state
                 keys_to_clear = ['step', 'journal_info', 'journal_logo', 'articles', 
-                                'hierarchy', 'selected_years', 'years_input', 'world_baselines',
-                                'trends', 'collaboration_stats', 'world_gaps']
+                                'hierarchy', 'selected_years', 'years_input']
                 for key in keys_to_clear:
                     if key in st.session_state:
                         del st.session_state[key]
