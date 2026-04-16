@@ -3404,11 +3404,13 @@ def main():
                                 else:
                                     st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}")
                                 
-                                for idx, article in enumerate(articles[:5]):  # Show first 5 articles for compactness
+                                for idx, article in enumerate(articles[:5]):  
+                                    title = article.get('title') or 'No title'
+                                    authors = article.get('authors') or 'N/A'
                                     st.markdown(f"""
                                     <div style="padding: 8px; margin: 4px 0 4px 60px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;">
-                                        <b>{idx+1}. {article.get('title', 'No title')[:80]}{'...' if len(article.get('title', '')) > 80 else ''}</b><br>
-                                        {t['authors_icon']} {article.get('authors', 'N/A')[:80]}<br>
+                                        <b>{idx+1}. {title[:80]}{'...' if len(title) > 80 else ''}</b><br>
+                                        {t['authors_icon']} {authors[:80]}<br>
                                         📊 {t['citations']}: {article.get('cited_by_count', 0)} ({t['citations_per_year']}: {article.get('citations_per_year', 0)})
                                         {f' 🔥' if article.get('is_highly_cited') else ''}<br>
                                         {t['link_icon']} <a href="{article.get('doi_url', '#')}" target="_blank">{t['view_article']}</a>
