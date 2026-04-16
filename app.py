@@ -40,7 +40,6 @@ from reportlab.pdfbase.ttfonts import TTFont
 from scipy import stats as scipy_stats
 from sklearn.linear_model import LinearRegression
 import networkx as nx
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
