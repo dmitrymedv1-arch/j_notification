@@ -14,4 +14,4 @@ reportlab
 aiohttp
 joblib
 scipy
-
+scikit-learn
