@@ -2513,7 +2513,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             domain_avg = domain_stats.get('avg_citations', 0)
             domain_fwci = domain_stats.get('avg_fwci', 0)
             anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
-            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (FWCI: {domain_fwci:.2f})</a>', toc_domain_style))
+            fwci_str = f"{domain_fwci:.2f}" if domain_fwci is not None else "N/A"
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей, {domain_citations} цитирований (FWCI: {fwci_str})</a>', toc_domain_style))
         else:
             anchor_id = f"domain_{hashlib.md5(domain.encode('utf-8')).hexdigest()[:8]}"
             story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} статей</a>', toc_domain_style))
@@ -2569,7 +2570,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         story.append(anchor_para)
         
         if include_metrics:
-            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (FWCI: {domain_fwci:.2f})", domain_style))
+            fwci_str = f"{domain_fwci:.2f}" if domain_fwci is not None else "N/A"
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей, {domain_citations} цитирований (FWCI: {fwci_str})", domain_style))
         else:
             story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} статей", domain_style))
         story.append(Spacer(1, 0.3*cm))
@@ -2592,7 +2594,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             story.append(field_anchor_para)
             
             if include_metrics:
-                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (FWCI: {field_fwci:.2f})", field_style))
+                fwci_str = f"{field_fwci:.2f}" if field_fwci is not None else "N/A"
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей, {field_citations} цитирований (FWCI: {fwci_str})", field_style))
             else:
                 story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} статей", field_style))
             story.append(Spacer(1, 0.2*cm))
@@ -2617,7 +2620,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 story.append(subfield_anchor_para)
                 
                 if include_metrics:
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{trend_emoji} {clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (FWCI: {subfield_fwci:.2f})", subfield_style))
+                    fwci_str = f"{subfield_fwci:.2f}" if subfield_fwci is not None else "N/A"
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{trend_emoji} {clean_text(subfield)} — {subfield_articles} статей, {subfield_citations} цитирований (FWCI: {fwci_str})", subfield_style))
                 else:
                     story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{trend_emoji} {clean_text(subfield)} — {subfield_articles} статей", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
@@ -3148,7 +3152,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             domain_avg = domain_stats.get('avg_citations', 0)
             domain_fwci = domain_stats.get('avg_fwci', 0)
             anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
-            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (FWCI: {domain_fwci:.2f})</a>', toc_domain_style))
+            fwci_str = f"{domain_fwci:.2f}" if domain_fwci is not None else "N/A"
+            story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles, {domain_citations} citations (FWCI: {fwci_str})</a>', toc_domain_style))
         else:
             anchor_id = f"domain_{hashlib.md5(domain.encode()).hexdigest()[:8]}"
             story.append(Paragraph(f'<a href="#{anchor_id}"><b>{clean_text(domain)}</b> — {domain_articles} articles</a>', toc_domain_style))
@@ -3204,7 +3209,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         story.append(anchor_para)
         
         if include_metrics:
-            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (FWCI: {domain_fwci:.2f})", domain_style))
+            fwci_str = f"{domain_fwci:.2f}" if domain_fwci is not None else "N/A"
+            story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles, {domain_citations} citations (FWCI: {fwci_str})", domain_style))
         else:
             story.append(Paragraph(f"{clean_text(domain)} — {domain_articles} articles", domain_style))
         story.append(Spacer(1, 0.3*cm))
@@ -3227,7 +3233,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             story.append(field_anchor_para)
             
             if include_metrics:
-                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (FWCI: {field_fwci:.2f})", field_style))
+                fwci_str = f"{field_fwci:.2f}" if field_fwci is not None else "N/A"
+                story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles, {field_citations} citations (FWCI: {fwci_str})", field_style))
             else:
                 story.append(Paragraph(f"&nbsp;&nbsp;{clean_text(field)} — {field_articles} articles", field_style))
             story.append(Spacer(1, 0.2*cm))
@@ -3252,7 +3259,8 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 story.append(subfield_anchor_para)
                 
                 if include_metrics:
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{trend_emoji} {clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (FWCI: {subfield_fwci:.2f})", subfield_style))
+                    fwci_str = f"{subfield_fwci:.2f}" if subfield_fwci is not None else "N/A"
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{trend_emoji} {clean_text(subfield)} — {subfield_articles} articles, {subfield_citations} citations (FWCI: {fwci_str})", subfield_style))
                 else:
                     story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;{trend_emoji} {clean_text(subfield)} — {subfield_articles} articles", subfield_style))
                 story.append(Spacer(1, 0.2*cm))
