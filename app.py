@@ -624,6 +624,12 @@ def init_cache_db():
         )
     ''')
     
+    # Migration for existing databases
+    try:
+        cursor.execute('ALTER TABLE subfield_baselines_cache ADD COLUMN total_works INTEGER')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS citation_networks_cache (
             source_id TEXT,
