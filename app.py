@@ -1417,9 +1417,8 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     import os
     
     font_found = False
-    russian_font_name = 'Helvetica'  # fallback
+    russian_font_name = 'Helvetica'
     
-    # List of possible font paths with Cyrillic support
     font_paths = [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
@@ -1631,6 +1630,17 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         encoding='utf-8'
     )
     
+    toc_topic_style = ParagraphStyle(
+        'TOCTopicStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#2980B9'),
+        spaceAfter=3,
+        leftIndent=45,
+        fontName=russian_font_name,
+        encoding='utf-8'
+    )
+    
     intro_style = ParagraphStyle(
         'IntroStyle',
         parent=styles['Normal'],
@@ -1761,7 +1771,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield) ==========
+    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield -> Topic) ==========
     story.append(Paragraph("Содержание", title_style))
     story.append(Spacer(1, 0.5*cm))
     
@@ -1791,7 +1801,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode('utf-8')).hexdigest()[:8]}"
                 story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} статей', toc_field_style))
             
-            for subfield in subfields.keys():
+            for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 
@@ -1803,6 +1813,20 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 else:
                     subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode('utf-8')).hexdigest()[:8]}"
                     story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} статей', toc_subfield_style))
+                
+                # Add Topics to TOC
+                for topic in topics.keys():
+                    topic_stats = subfield_stats.get('topics', {}).get(topic, {})
+                    topic_articles = topic_stats.get('articles', 0)
+                    
+                    if include_metrics:
+                        topic_citations = topic_stats.get('citations', 0)
+                        topic_avg = topic_stats.get('avg_citations', 0)
+                        topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode('utf-8')).hexdigest()[:8]}"
+                        story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{topic_anchor_id}">{clean_text(topic)}</a> — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})', toc_topic_style))
+                    else:
+                        topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode('utf-8')).hexdigest()[:8]}"
+                        story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{topic_anchor_id}">{clean_text(topic)}</a> — {topic_articles} статей', toc_topic_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -1876,6 +1900,10 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                    
+                    topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode('utf-8')).hexdigest()[:8]}"
+                    topic_anchor_para = Paragraph(f'<a name="{topic_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
+                    story.append(topic_anchor_para)
                     
                     if include_metrics:
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})", topic_style))
@@ -2198,6 +2226,16 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         fontName='Helvetica'
     )
     
+    toc_topic_style = ParagraphStyle(
+        'TOCTopicStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#2980B9'),
+        spaceAfter=3,
+        leftIndent=45,
+        fontName='Helvetica'
+    )
+    
     intro_style = ParagraphStyle(
         'IntroStyle',
         parent=styles['Normal'],
@@ -2325,7 +2363,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     story.append(stats_table)
     story.append(PageBreak())
     
-    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield) ==========
+    # ========== TABLE OF CONTENTS (Domain -> Field -> Subfield -> Topic) ==========
     story.append(Paragraph("Table of Contents", title_style))
     story.append(Spacer(1, 0.5*cm))
     
@@ -2355,7 +2393,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 field_anchor_id = f"field_{hashlib.md5(f"{domain}_{field}".encode()).hexdigest()[:8]}"
                 story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{field_anchor_id}">{clean_text(field)}</a> — {field_articles} articles', toc_field_style))
             
-            for subfield in subfields.keys():
+            for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 
@@ -2367,6 +2405,20 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 else:
                     subfield_anchor_id = f"subfield_{hashlib.md5(f"{domain}_{field}_{subfield}".encode()).hexdigest()[:8]}"
                     story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{subfield_anchor_id}">{clean_text(subfield)}</a> — {subfield_articles} articles', toc_subfield_style))
+                
+                # Add Topics to TOC
+                for topic in topics.keys():
+                    topic_stats = subfield_stats.get('topics', {}).get(topic, {})
+                    topic_articles = topic_stats.get('articles', 0)
+                    
+                    if include_metrics:
+                        topic_citations = topic_stats.get('citations', 0)
+                        topic_avg = topic_stats.get('avg_citations', 0)
+                        topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode()).hexdigest()[:8]}"
+                        story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{topic_anchor_id}">{clean_text(topic)}</a> — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})', toc_topic_style))
+                    else:
+                        topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode()).hexdigest()[:8]}"
+                        story.append(Paragraph(f'&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#{topic_anchor_id}">{clean_text(topic)}</a> — {topic_articles} articles', toc_topic_style))
         
         story.append(Spacer(1, 0.3*cm))
     
@@ -2440,6 +2492,10 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                     topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                    
+                    topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode()).hexdigest()[:8]}"
+                    topic_anchor_para = Paragraph(f'<a name="{topic_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
+                    story.append(topic_anchor_para)
                     
                     if include_metrics:
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})", topic_style))
@@ -2528,13 +2584,12 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     
     # ========== APP LOGO AT THE END ==========
     try:
-        # Check for app logo in various locations
         possible_paths = [
-            "logo.png",  # Current directory
-            "./logo.png",  # Relative path
-            "app/logo.png",  # If in subdirectory
-            os.path.join(os.path.dirname(__file__), "logo.png"),  # Absolute path
-            os.path.join(os.getcwd(), "logo.png")  # Current working directory
+            "logo.png",
+            "./logo.png",
+            "app/logo.png",
+            os.path.join(os.path.dirname(__file__), "logo.png"),
+            os.path.join(os.getcwd(), "logo.png")
         ]
         
         app_logo_path = None
@@ -2544,20 +2599,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 break
         
         if app_logo_path:
-            # Verify with PIL
             from PIL import Image as PILImage
             pil_img = PILImage.open(app_logo_path)
             pil_img.verify()
             pil_img.close()
             
-            # Use Image from reportlab
             app_logo = Image(app_logo_path, width=200, height=200)
             app_logo.hAlign = 'CENTER'
             story.append(app_logo)
             story.append(Spacer(1, 0.2*cm))
             logger.info(f"App logo loaded successfully from: {app_logo_path}")
         else:
-            # If logo not found, show emoji
             story.append(Paragraph("📚", ParagraphStyle(
                 'LogoEmoji',
                 parent=styles['Normal'],
@@ -2570,7 +2622,6 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
             
     except Exception as e:
         logger.error(f"Could not load app logo: {e}")
-        # If logo fails to load, show emoji
         story.append(Paragraph("📚", ParagraphStyle(
             'LogoEmoji',
             parent=styles['Normal'],
@@ -2644,7 +2695,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("=" * 80)
     output.append("")
     
-    # Table of Contents
+    # Table of Contents (Domain -> Field -> Subfield -> Topic)
     output.append("СОДЕРЖАНИЕ")
     output.append("-" * 40)
     for domain, fields in hierarchy.items():
@@ -2658,7 +2709,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
         else:
             output.append(f"{domain} — {domain_articles} статей")
         
-        for field in fields.keys():
+        for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             
@@ -2669,7 +2720,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
             else:
                 output.append(f"  └── {field} — {field_articles} статей")
             
-            for subfield in fields[field].keys():
+            for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 
@@ -2679,6 +2730,18 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                     output.append(f"      └── {subfield} — {subfield_articles} статей, {subfield_citations} цитирований (avg: {subfield_avg:.1f})")
                 else:
                     output.append(f"      └── {subfield} — {subfield_articles} статей")
+                
+                # Add Topics to TOC
+                for topic in topics.keys():
+                    topic_stats = subfield_stats.get('topics', {}).get(topic, {})
+                    topic_articles = topic_stats.get('articles', 0)
+                    
+                    if include_metrics:
+                        topic_citations = topic_stats.get('citations', 0)
+                        topic_avg = topic_stats.get('avg_citations', 0)
+                        output.append(f"          └── {topic} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})")
+                    else:
+                        output.append(f"          └── {topic} — {topic_articles} статей")
     
     output.append("")
     output.append("=" * 80)
@@ -2870,7 +2933,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append("=" * 80)
     output.append("")
     
-    # Table of Contents
+    # Table of Contents (Domain -> Field -> Subfield -> Topic)
     output.append("TABLE OF CONTENTS")
     output.append("-" * 40)
     for domain, fields in hierarchy.items():
@@ -2884,7 +2947,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
         else:
             output.append(f"{domain} — {domain_articles} articles")
         
-        for field in fields.keys():
+        for field, subfields in fields.items():
             field_stats = domain_stats.get('fields', {}).get(field, {})
             field_articles = field_stats.get('articles', 0)
             
@@ -2895,7 +2958,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
             else:
                 output.append(f"  └── {field} — {field_articles} articles")
             
-            for subfield in fields[field].keys():
+            for subfield, topics in subfields.items():
                 subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
                 subfield_articles = subfield_stats.get('articles', 0)
                 
@@ -2905,6 +2968,18 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                     output.append(f"      └── {subfield} — {subfield_articles} articles, {subfield_citations} citations (avg: {subfield_avg:.1f})")
                 else:
                     output.append(f"      └── {subfield} — {subfield_articles} articles")
+                
+                # Add Topics to TOC
+                for topic in topics.keys():
+                    topic_stats = subfield_stats.get('topics', {}).get(topic, {})
+                    topic_articles = topic_stats.get('articles', 0)
+                    
+                    if include_metrics:
+                        topic_citations = topic_stats.get('citations', 0)
+                        topic_avg = topic_stats.get('avg_citations', 0)
+                        output.append(f"          └── {topic} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})")
+                    else:
+                        output.append(f"          └── {topic} — {topic_articles} articles")
     
     output.append("")
     output.append("=" * 80)
