@@ -187,7 +187,6 @@ LANGUAGES = {
     }
 }
 
-
 # ============================================================================
 # CUSTOMIZABLE DEFAULT MESSAGES
 # ============================================================================
@@ -1004,383 +1003,118 @@ def extract_topic_hierarchy(article: dict) -> Tuple[str, str, str, str]:
     
     return (domain, field, subfield, topic)
 
-# ============================================================================
-# SAFE TEXT PROCESSING FUNCTIONS
-# ============================================================================
-
-def safe_unicode_decode(text: str) -> str:
-    """
-    Безопасное декодирование Unicode-последовательностей типа \u0410 в реальные символы.
-    
-    Examples:
-        "\u0410. V. Suzdaltsev" -> "А. V. Suzdaltsev"
-        "\u0410. \u041f. \u0425\u0440\u0430\u043c\u043e\u0432" -> "А. П. Храмов"
-    """
-    if not text or not isinstance(text, str):
-        return ""
-    
-    try:
-        # Если строка содержит Unicode escape-последовательности
-        if '\\u' in text:
-            # Пробуем декодировать как escape-последовательности
-            # Сначала кодируем в latin1, затем декодируем с unicode_escape
-            decoded = text.encode('latin1').decode('unicode_escape')
-            return decoded
-        return text
-    except (UnicodeDecodeError, UnicodeEncodeError, LookupError) as e:
-        # Если произошла ошибка, возвращаем исходную строку
-        logger.warning(f"Failed to decode Unicode escapes in: {text[:50]}... Error: {e}")
-        return text
-    except Exception as e:
-        logger.error(f"Unexpected error in safe_unicode_decode: {e}")
-        return text
-
-
-def clean_text_safe(text: str, keep_cyrillic: bool = True, keep_html: bool = False) -> str:
-    """
-    Безопасная очистка текста с сохранением кириллицы и базовой пунктуации.
-    
-    Args:
-        text: Исходный текст для очистки
-        keep_cyrillic: Сохранять ли кириллические символы
-        keep_html: Сохранять ли HTML-теги (для ReportLab)
-    
-    Returns:
-        Очищенная строка
-    """
-    if not text or not isinstance(text, str):
-        return ""
-    
-    # Пустая строка или None
-    if text is None:
-        return ""
-    
-    # Преобразуем в строку, если пришел другой тип
-    if not isinstance(text, str):
-        text = str(text)
-    
-    # Шаг 1: Декодируем Unicode-последовательности
-    text = safe_unicode_decode(text)
-    
-    # Шаг 2: Нормализуем Unicode (NFC - предпочтительная форма)
-    try:
-        import unicodedata
-        text = unicodedata.normalize('NFC', text)
-    except Exception:
-        pass
-    
-    # Шаг 3: Удаляем или сохраняем HTML-теги
-    if not keep_html:
-        # Удаляем HTML-теги (но не содержимое)
-        text = re.sub(r'<[^>]+>', '', text)
-    
-    # Шаг 4: Очищаем от недопустимых символов
-    if keep_cyrillic:
-        # Разрешаем: латиницу, кириллицу, цифры, пробелы, базовую пунктуацию
-        # Диапазон кириллицы: \u0400-\u04FF (русские буквы)
-        allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ0-9\s\.\,\-\'\(\)\"\!\?\;:]'
-        text = re.sub(allowed_pattern, '', text, flags=re.UNICODE)
-    else:
-        # Только латиница, цифры и базовая пунктуация
-        allowed_pattern = r'[^a-zA-Z0-9\s\.\,\-\'\(\)\"\!\?\;:]'
-        text = re.sub(allowed_pattern, '', text)
-    
-    # Шаг 5: Удаляем лишние пробелы
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # Шаг 6: Если результат пустой, возвращаем значение по умолчанию
-    if not text or len(text.strip()) == 0:
-        return "Not specified"
-    
-    return text
-
-
-def extract_doi_safe(article: dict) -> Tuple[str, str]:
-    """
-    Безопасное извлечение DOI из метаданных статьи.
-    DOI должно извлекаться всегда, независимо от других полей.
-    
-    Returns:
-        Tuple[doi_clean, doi_url]
-    """
-    try:
-        # Пробуем получить DOI из разных полей
-        doi_raw = None
-        
-        # Основное поле doi
-        if article.get('doi'):
-            doi_raw = article.get('doi')
-        # Альтернативное поле ids.doi
-        elif article.get('ids', {}).get('doi'):
-            doi_raw = article.get('ids', {}).get('doi')
-        
-        if doi_raw:
-            # Очищаем DOI от префикса https://doi.org/
-            doi_clean = str(doi_raw).replace('https://doi.org/', '').replace('http://doi.org/', '')
-            doi_url = f"https://doi.org/{doi_clean}"
-            return doi_clean, doi_url
-        
-        return "", ""
-    except Exception as e:
-        logger.error(f"Error extracting DOI: {e}")
-        return "", ""
-
-
-def extract_title_safe(article: dict) -> str:
-    """
-    Безопасное извлечение названия статьи.
-    Приоритет: display_name -> title -> "Untitled Article"
-    """
-    try:
-        # Пробуем получить display_name (более чистая версия)
-        title = article.get('display_name', '')
-        
-        # Если display_name пустой, берем title
-        if not title or title.strip() == '':
-            title = article.get('title', '')
-        
-        # Если оба пустые
-        if not title or title.strip() == '':
-            return "Untitled Article"
-        
-        # Очищаем название (сохраняем HTML-теги для ReportLab)
-        title_clean = clean_text_safe(title, keep_cyrillic=True, keep_html=True)
-        
-        # Если после очистки название слишком длинное, обрезаем
-        if len(title_clean) > 500:
-            title_clean = title_clean[:497] + "..."
-        
-        return title_clean if title_clean else "Untitled Article"
-        
-    except Exception as e:
-        logger.error(f"Error extracting title: {e}")
-        return "Untitled Article"
-
-
-def extract_authors_safe(article: dict, max_authors: int = 10) -> Tuple[str, List[str]]:
-    """
-    Безопасное извлечение авторов статьи.
-    Приоритет: raw_author_name -> author.display_name -> "Author not specified"
-    
-    Returns:
-        Tuple[authors_string, authors_list]
-    """
-    authors = []
-    
-    try:
-        authorships = article.get('authorships', [])
-        
-        if not authorships:
-            return "Authors not specified", []
-        
-        for authorship in authorships[:max_authors]:
-            if not authorship:
-                continue
-            
-            author_name = ""
-            
-            # ПРИОРИТЕТ 1: raw_author_name (оригинальное написание, часто в латинице)
-            if authorship.get('raw_author_name'):
-                raw_name = authorship.get('raw_author_name')
-                if raw_name and isinstance(raw_name, str) and raw_name.strip():
-                    author_name = clean_text_safe(raw_name, keep_cyrillic=True, keep_html=False)
-            
-            # ПРИОРИТЕТ 2: author.display_name (может содержать Unicode-последовательности)
-            if not author_name:
-                author_obj = authorship.get('author', {})
-                if author_obj and isinstance(author_obj, dict):
-                    display_name = author_obj.get('display_name', '')
-                    if display_name:
-                        # Специальная обработка для display_name с Unicode-последовательностями
-                        author_name = clean_text_safe(display_name, keep_cyrillic=True, keep_html=False)
-            
-            # ПРИОРИТЕТ 3: Прямое поле author (если author - строка)
-            if not author_name and 'author' in authorship:
-                author_field = authorship['author']
-                if isinstance(author_field, str):
-                    author_name = clean_text_safe(author_field, keep_cyrillic=True, keep_html=False)
-                elif isinstance(author_field, dict):
-                    author_name = clean_text_safe(author_field.get('display_name', ''), keep_cyrillic=True, keep_html=False)
-            
-            # Добавляем автора, если имя не пустое
-            if author_name and author_name != "Not specified":
-                # Удаляем лишние точки и пробелы в инициалах
-                author_name = re.sub(r'\s+', ' ', author_name).strip()
-                if author_name:
-                    authors.append(author_name)
-        
-        # Если авторы не найдены
-        if not authors:
-            return "Authors not specified", []
-        
-        # Формируем строку авторов
-        authors_str = ', '.join(authors)
-        
-        # Если авторов больше max_authors, добавляем et al.
-        total_authors = len(authorships)
-        if total_authors > max_authors:
-            authors_str += f" et al. ({total_authors} authors total)"
-        
-        return authors_str, authors
-        
-    except Exception as e:
-        logger.error(f"Error extracting authors: {e}")
-        return "Authors not specified", []
-
 def enrich_article_data(article: dict, threshold_total: int = None, threshold_per_year: int = None) -> dict:
     """
     Enrich article data with complete information.
-    Каждое поле извлекается независимо с обработкой ошибок.
     """
     if not article:
         return {}
     
-    enriched = {}
+    doi_raw = article.get('doi')
+    doi_clean = ''
+    if doi_raw:
+        doi_clean = str(doi_raw).replace('https://doi.org/', '')
     
-    # ========================================================================
-    # 1. DOI (извлекается безусловно, в первую очередь)
-    # ========================================================================
-    doi_clean, doi_url = extract_doi_safe(article)
-    enriched['doi'] = doi_clean
-    enriched['doi_url'] = doi_url
+    # Extract publication info
+    biblio = article.get('biblio', {})
+    volume = biblio.get('volume', '')
+    issue = biblio.get('issue', '')
+    first_page = biblio.get('first_page', '')
+    last_page = biblio.get('last_page', '')
     
-    # ========================================================================
-    # 2. Title (название статьи)
-    # ========================================================================
-    enriched['title'] = extract_title_safe(article)
+    # Format pages
+    pages_str = ''
+    if first_page and last_page and first_page != last_page:
+        pages_str = f"{first_page}-{last_page}"
+    elif first_page:
+        pages_str = first_page
+    elif last_page:
+        pages_str = last_page
     
-    # ========================================================================
-    # 3. Authors (авторы)
-    # ========================================================================
-    authors_str, authors_list = extract_authors_safe(article, max_authors=10)
-    enriched['authors'] = authors_str
-    enriched['authors_list'] = authors_list
+    # Extract authors with proper Cyrillic handling
+    authorships = article.get('authorships', [])
+    authors = []
     
-    # ========================================================================
-    # 4. Publication info (год, дата)
-    # ========================================================================
-    try:
-        enriched['publication_year'] = article.get('publication_year', 0)
-        if not isinstance(enriched['publication_year'], int):
-            enriched['publication_year'] = 0
-    except Exception:
-        enriched['publication_year'] = 0
-    
-    try:
-        enriched['publication_date'] = article.get('publication_date', '')
-        if not enriched['publication_date']:
-            enriched['publication_date'] = ''
-    except Exception:
-        enriched['publication_date'] = ''
-    
-    # ========================================================================
-    # 5. Bibliographic info (volume, issue, pages)
-    # ========================================================================
-    try:
-        biblio = article.get('biblio', {})
-        if biblio:
-            enriched['volume'] = biblio.get('volume', '')
-            enriched['issue'] = biblio.get('issue', '')
-            first_page = biblio.get('first_page', '')
-            last_page = biblio.get('last_page', '')
+    for authorship in authorships[:10]:  # Maximum 10 authors
+        if authorship:
+            author_name = ''
             
-            # Format pages
-            if first_page and last_page and first_page != last_page:
-                enriched['pages'] = f"{first_page}-{last_page}"
-            elif first_page:
-                enriched['pages'] = first_page
-            elif last_page:
-                enriched['pages'] = last_page
-            else:
-                enriched['pages'] = ''
-        else:
-            enriched['volume'] = ''
-            enriched['issue'] = ''
-            enriched['pages'] = ''
-    except Exception:
-        enriched['volume'] = ''
-        enriched['issue'] = ''
-        enriched['pages'] = ''
+            # Try raw_author_name (original spelling)
+            if 'raw_author_name' in authorship:
+                author_name = authorship.get('raw_author_name', '')
+            
+            # Try author.display_name
+            if not author_name:
+                author = authorship.get('author', {})
+                if author:
+                    author_name = author.get('display_name', '')
+            
+            # Try direct author field
+            if not author_name and 'author' in authorship:
+                author_obj = authorship['author']
+                if isinstance(author_obj, dict):
+                    author_name = author_obj.get('display_name', '')
+            
+            if author_name:
+                # Normalize Unicode
+                import unicodedata
+                author_name = unicodedata.normalize('NFC', str(author_name))
+                
+                # Clean problematic characters but keep Cyrillic
+                # Allowed: letters (Russian/English), spaces, dots, commas, hyphens, parentheses
+                author_name = re.sub(r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)]', '', author_name)
+                
+                # Remove extra spaces
+                author_name = re.sub(r'\s+', ' ', author_name).strip()
+                
+                if author_name:
+                    authors.append(author_name)
     
-    # ========================================================================
-    # 6. Topic hierarchy (domain, field, subfield, topic)
-    # ========================================================================
-    try:
-        domain, field, subfield, primary_topic = extract_topic_hierarchy(article)
-        enriched['domain'] = clean_text_safe(domain, keep_cyrillic=True, keep_html=False)
-        enriched['field'] = clean_text_safe(field, keep_cyrillic=True, keep_html=False)
-        enriched['subfield'] = clean_text_safe(subfield, keep_cyrillic=True, keep_html=False)
-        enriched['primary_topic'] = clean_text_safe(primary_topic, keep_cyrillic=True, keep_html=False)
-    except Exception as e:
-        logger.warning(f"Error extracting topic hierarchy: {e}")
-        enriched['domain'] = "Unidentified"
-        enriched['field'] = "Unidentified"
-        enriched['subfield'] = "Unidentified"
-        enriched['primary_topic'] = "Unidentified"
+    authors_str = ', '.join(authors)
+    if len(authorships) > 10:
+        authors_str += f" et al. ({len(authorships)} authors total)"
     
-    # ========================================================================
-    # 7. Citation metrics
-    # ========================================================================
-    try:
-        citations_total = article.get('cited_by_count', 0)
-        if not isinstance(citations_total, (int, float)):
-            citations_total = 0
-        enriched['cited_by_count'] = int(citations_total)
-    except Exception:
-        enriched['cited_by_count'] = 0
+    # Get topic hierarchy
+    domain, field, subfield, primary_topic = extract_topic_hierarchy(article)
     
-    try:
-        publication_year = enriched.get('publication_year', 0)
-        current_year = datetime.now().year
-        age = max(1, current_year - publication_year) if publication_year > 0 else 1
-        citations_per_year = enriched['cited_by_count'] / age
-        enriched['citations_per_year'] = round(citations_per_year, 1)
-    except Exception:
-        enriched['citations_per_year'] = 0.0
+    # Calculate citation metrics with thresholds
+    citations_total, citations_per_year, is_highly_cited = calculate_citation_activity(
+        article, None, threshold_total, threshold_per_year
+    )
     
-    # Determine if highly cited
-    try:
-        is_highly_cited = False
-        if threshold_total is not None and threshold_per_year is not None:
-            is_highly_cited = (enriched['cited_by_count'] > threshold_total) or (enriched['citations_per_year'] > threshold_per_year)
-        elif threshold_total is not None:
-            is_highly_cited = (enriched['cited_by_count'] > threshold_total)
-        elif threshold_per_year is not None:
-            is_highly_cited = (enriched['citations_per_year'] > threshold_per_year)
-        enriched['is_highly_cited'] = is_highly_cited
-    except Exception:
-        enriched['is_highly_cited'] = False
-    
-    # ========================================================================
-    # 8. Journal name (source)
-    # ========================================================================
-    try:
-        journal_name = ''
-        primary_location = article.get('primary_location')
-        if primary_location:
-            source = primary_location.get('source', {})
-            if source:
-                journal_name = source.get('display_name', '')
+    # Get source (journal) info
+    journal_name = ''
+    primary_location = article.get('primary_location')
+    if primary_location:
+        source = primary_location.get('source', {})
+        if source:
+            journal_name = source.get('display_name', '')
             if not journal_name:
                 host_venue = article.get('host_venue', {})
                 journal_name = host_venue.get('display_name', '')
-        enriched['journal_name'] = clean_text_safe(journal_name, keep_cyrillic=True, keep_html=False)
-    except Exception:
-        enriched['journal_name'] = ''
     
-    # ========================================================================
-    # 9. Article type and Open Access
-    # ========================================================================
-    try:
-        enriched['type'] = article.get('type', '')
-    except Exception:
-        enriched['type'] = ''
-    
-    try:
-        open_access = article.get('open_access', {})
-        enriched['is_oa'] = open_access.get('is_oa', False) if open_access else False
-    except Exception:
-        enriched['is_oa'] = False
+    enriched = {
+        'doi': doi_clean,
+        'doi_url': f"https://doi.org/{doi_clean}" if doi_clean else '',
+        'title': article.get('title', ''),
+        'publication_year': article.get('publication_year', 0),
+        'publication_date': article.get('publication_date', ''),
+        'cited_by_count': citations_total,
+        'citations_per_year': round(citations_per_year, 1),
+        'is_highly_cited': is_highly_cited,
+        'authors': authors_str,
+        'authors_list': authors,
+        'journal_name': journal_name,
+        'volume': volume,
+        'issue': issue,
+        'pages': pages_str,
+        'domain': domain,
+        'field': field,
+        'subfield': subfield,
+        'primary_topic': primary_topic,
+        'type': article.get('type', ''),
+        'is_oa': article.get('open_access', {}).get('is_oa', False) if article.get('open_access') else False
+    }
     
     return enriched
 
@@ -1391,39 +1125,30 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
 def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = None, threshold_per_year: int = None) -> Dict[str, Dict[str, Dict[str, Dict[str, List[dict]]]]]:
     """
     Group articles by hierarchy: Domain -> Field -> Subfield -> Topic
-    Использует безопасные функции для извлечения данных.
+    
+    Returns:
+        {
+            "Physical Sciences": {
+                "Materials Science": {
+                    "Materials Chemistry": {
+                        "Advancements in SOFC": [article1, article2],
+                        "Electronic Properties": [article3]
+                    }
+                }
+            }
+        }
     """
     hierarchy = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
     
-    failed_articles = 0
-    
-    for idx, article in enumerate(articles):
-        try:
-            # Используем улучшенную функцию enrich_article_data
-            enriched = enrich_article_data(article, threshold_total, threshold_per_year)
-            
-            # Проверяем, что enriched не пустой
-            if not enriched or not enriched.get('title'):
-                logger.warning(f"Article {idx} produced empty enriched data")
-                failed_articles += 1
-                continue
-            
-            # Извлекаем иерархию с безопасной очисткой
-            domain = clean_text_safe(enriched.get('domain', 'Unidentified'), keep_cyrillic=True)
-            field = clean_text_safe(enriched.get('field', 'Unidentified'), keep_cyrillic=True)
-            subfield = clean_text_safe(enriched.get('subfield', 'Unidentified'), keep_cyrillic=True)
-            topic = clean_text_safe(enriched.get('primary_topic', 'Unidentified'), keep_cyrillic=True)
-            
-            # Добавляем в иерархию
-            hierarchy[domain][field][subfield][topic].append(enriched)
-            
-        except Exception as e:
-            logger.error(f"Error processing article {idx} (DOI: {article.get('doi', 'unknown')}): {e}")
-            failed_articles += 1
-            continue
-    
-    if failed_articles > 0:
-        logger.warning(f"Failed to process {failed_articles} out of {len(articles)} articles")
+    for article in articles:
+        enriched = enrich_article_data(article, threshold_total, threshold_per_year)
+        
+        domain = enriched.get('domain', 'Unidentified')
+        field = enriched.get('field', 'Unidentified')
+        subfield = enriched.get('subfield', 'Unidentified')
+        topic = enriched.get('primary_topic', 'Unidentified')
+        
+        hierarchy[domain][field][subfield][topic].append(enriched)
     
     # Convert defaultdict to regular dict for serialization
     result = {}
@@ -1726,55 +1451,14 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         russian_font_name = 'Helvetica'
     
     def clean_text(text):
-        """
-        Безопасная очистка текста для ReportLab с поддержкой кириллицы.
-        """
         if not text:
             return ""
-        
-        # Преобразуем в строку, если нужно
         if isinstance(text, bytes):
-            try:
-                text = text.decode('utf-8', 'ignore')
-            except Exception:
-                text = str(text)
-        
-        if not isinstance(text, str):
-            text = str(text)
-        
-        try:
-            import unicodedata
-            
-            # Нормализация Unicode
-            text = unicodedata.normalize('NFC', text)
-            
-            # Декодируем Unicode-последовательности
-            if '\\u' in text:
-                try:
-                    text = text.encode('latin1').decode('unicode_escape')
-                except Exception:
-                    pass
-            
-            # Экранируем спецсимволы для XML/HTML (ReportLab)
-            text = text.replace('&', '&amp;')
-            text = text.replace('<', '&lt;')
-            text = text.replace('>', '&gt;')
-            
-            # Сохраняем кириллицу, латиницу, цифры и базовую пунктуацию
-            # Разрешенные символы: буквы (рус/англ), цифры, пробелы, точки, запятые, дефисы, скобки, кавычки
-            allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ0-9\s\.\,\-\'\(\)\"\!\?\;:\/]'
-            text = re.sub(allowed_pattern, '', text)
-            
-            # Удаляем лишние пробелы
-            text = re.sub(r'\s+', ' ', text).strip()
-            
-            return text
-            
-        except Exception as e:
-            # В случае критической ошибки возвращаем упрощенную версию
-            logger.warning(f"Error in clean_text: {e}")
-            # Удаляем все, кроме букв и цифр
-            return re.sub(r'[^a-zA-Z0-9\s]', '', str(text))[:200]
+            text = text.decode('utf-8', 'ignore')
+        import unicodedata
+        text = unicodedata.normalize('NFC', str(text))
+        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        return text
     
     # Calculate statistics
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
@@ -2228,103 +1912,44 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
-                        try:
-                            # === НАЗВАНИЕ ===
-                            title = article.get('title', 'Без названия')
-                            if title and isinstance(title, str):
-                                title = clean_text(title)
-                            else:
-                                title = 'Без названия'
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
-                        except Exception as e:
-                            logger.error(f"Error processing title for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. [Title unavailable]", article_title_style))
+                        title = clean_text(article.get('title', 'Без названия'))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
                         
-                        try:
-                            # === АВТОРЫ ===
-                            authors = article.get('authors', 'Авторы не указаны')
-                            if authors and isinstance(authors, str):
-                                authors = clean_text(authors)
-                            else:
-                                authors = 'Авторы не указаны'
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
-                        except Exception as e:
-                            logger.error(f"Error processing authors for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> [Information unavailable]", authors_style))
+                        authors = clean_text(article.get('authors', 'Авторы не указаны'))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
                         
-                        try:
-                            # === МЕТАДАННЫЕ (журнал, год, том, выпуск, страницы) ===
-                            journal = clean_text(article.get('journal_name', journal_name))
-                            year = article.get('publication_year', '')
-                            volume = article.get('volume', '')
-                            issue = article.get('issue', '')
-                            pages = article.get('pages', '')
-                            
-                            meta_parts = [f"<b>{journal}</b>"]
-                            if year:
-                                meta_parts.append(str(year))
-                            if volume:
-                                meta_parts.append(f"Том {volume}")
-                            if issue:
-                                meta_parts.append(f"Вып. {issue}")
-                            if pages:
-                                meta_parts.append(f"С. {pages}")
-                            
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
-                        except Exception as e:
-                            logger.error(f"Error processing metadata for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Metadata unavailable]", meta_style))
+                        journal = clean_text(article.get('journal_name', journal_name))
+                        year = article.get('publication_year', '')
+                        volume = article.get('volume', '')
+                        issue = article.get('issue', '')
+                        pages = article.get('pages', '')
                         
-                        try:
-                            # === ЦИТИРОВАНИЯ ===
-                            citations = article.get('cited_by_count', 0)
-                            citations_per_year = article.get('citations_per_year', 0)
-                            is_highly = article.get('is_highly_cited', False)
-                            
-                            citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
-                            if is_highly:
-                                citation_text += " 🔥 Активно цитируемая"
-                            
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
-                        except Exception as e:
-                            logger.error(f"Error processing citations for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Цитирований:</b> [Data unavailable]", citation_style))
+                        meta_parts = [f"<b>{journal}</b>"]
+                        if year:
+                            meta_parts.append(str(year))
+                        if volume:
+                            meta_parts.append(f"Том {volume}")
+                        if issue:
+                            meta_parts.append(f"Вып. {issue}")
+                        if pages:
+                            meta_parts.append(f"С. {pages}")
                         
-                        # === DOI - ВЫНОСИМ В ОТДЕЛЬНЫЙ БЛОК С МАКСИМАЛЬНОЙ ЗАЩИТОЙ ===
-                        try:
-                            doi_url = article.get('doi_url', '')
-                            doi_clean = article.get('doi', '')
-                            
-                            # Логируем для диагностики
-                            if doi_url:
-                                logger.info(f"Article {idx} has DOI: {doi_url}")
-                            else:
-                                logger.warning(f"Article {idx} has NO DOI. Available keys: {list(article.keys())[:10]}")
-                            
-                            # Показываем DOI, даже если он неполный
-                            if doi_url:
-                                # Очищаем DOI для отображения
-                                doi_display = doi_url.replace('https://doi.org/', '').replace('http://doi.org/', '')
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_display}</link>", meta_style))
-                            elif doi_clean:
-                                # Если есть только чистый DOI без URL
-                                doi_url_full = f"https://doi.org/{doi_clean}"
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url_full}'>{doi_clean}</link>", meta_style))
-                            else:
-                                # Если DOI нет, показываем сообщение (но не прерываем)
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> Not available", meta_style))
-                        except Exception as e:
-                            logger.error(f"CRITICAL: Error processing DOI for article {idx}: {e}")
-                            # Даже в случае ошибки добавляем строку с сообщением
-                            try:
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> [Error retrieving DOI]", meta_style))
-                            except:
-                                pass
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
-                        # Разделитель между статьями
-                        if idx < len(articles):
-                            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + "─" * 40, separator_style))
-                            story.append(Spacer(1, 0.1*cm))
+                        # Always show citation info for individual articles
+                        citations = article.get('cited_by_count', 0)
+                        citations_per_year = article.get('citations_per_year', 0)
+                        is_highly = article.get('is_highly_cited', False)
+                        
+                        citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
+                        if is_highly:
+                            citation_text += " 🔥 Активно цитируемая"
+                        
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
+                        
+                        doi_url = article.get('doi_url', '')
+                        if doi_url:
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_url}</link>", meta_style))
                         
                         story.append(Spacer(1, 0.15*cm))
                         
@@ -2432,55 +2057,17 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     """Generate PDF report in English with hierarchical grouping and citation metrics toggle"""
     
     def clean_text(text):
-        """
-        Безопасная очистка текста для ReportLab с поддержкой кириллицы.
-        """
         if not text:
             return ""
-        
-        # Преобразуем в строку, если нужно
         if isinstance(text, bytes):
-            try:
-                text = text.decode('utf-8', 'ignore')
-            except Exception:
-                text = str(text)
-        
-        if not isinstance(text, str):
-            text = str(text)
-        
-        try:
-            import unicodedata
-            
-            # Нормализация Unicode
-            text = unicodedata.normalize('NFC', text)
-            
-            # Декодируем Unicode-последовательности
-            if '\\u' in text:
-                try:
-                    text = text.encode('latin1').decode('unicode_escape')
-                except Exception:
-                    pass
-            
-            # Экранируем спецсимволы для XML/HTML (ReportLab)
-            text = text.replace('&', '&amp;')
-            text = text.replace('<', '&lt;')
-            text = text.replace('>', '&gt;')
-            
-            # Сохраняем кириллицу, латиницу, цифры и базовую пунктуацию
-            # Разрешенные символы: буквы (рус/англ), цифры, пробелы, точки, запятые, дефисы, скобки, кавычки
-            allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ0-9\s\.\,\-\'\(\)\"\!\?\;:\/]'
-            text = re.sub(allowed_pattern, '', text)
-            
-            # Удаляем лишние пробелы
-            text = re.sub(r'\s+', ' ', text).strip()
-            
-            return text
-            
-        except Exception as e:
-            # В случае критической ошибки возвращаем упрощенную версию
-            logger.warning(f"Error in clean_text: {e}")
-            # Удаляем все, кроме букв и цифр
-            return re.sub(r'[^a-zA-Z0-9\s]', '', str(text))[:200]
+            text = text.decode('utf-8', 'ignore')
+        import unicodedata
+        text = unicodedata.normalize('NFC', str(text))
+        text = re.sub(r'<[^>]+>', '', text)
+        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        allowed_pattern = r'[^a-zA-Zа-яА-ЯёЁ\s\.\,\-\'\(\)\d]'
+        text = re.sub(allowed_pattern, '', text)
+        return text
     
     # Calculate statistics
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
@@ -2915,105 +2502,46 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                     else:
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles", topic_style))
                     story.append(Spacer(1, 0.2*cm))
-
+                    
                     for idx, article in enumerate(articles, 1):
-                        try:
-                            # === НАЗВАНИЕ ===
-                            title = article.get('title', 'Без названия')
-                            if title and isinstance(title, str):
-                                title = clean_text(title)
-                            else:
-                                title = 'Без названия'
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
-                        except Exception as e:
-                            logger.error(f"Error processing title for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. [Title unavailable]", article_title_style))
+                        title = clean_text(article.get('title', 'No title'))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
                         
-                        try:
-                            # === АВТОРЫ ===
-                            authors = article.get('authors', 'Авторы не указаны')
-                            if authors and isinstance(authors, str):
-                                authors = clean_text(authors)
-                            else:
-                                authors = 'Авторы не указаны'
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
-                        except Exception as e:
-                            logger.error(f"Error processing authors for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> [Information unavailable]", authors_style))
+                        authors = clean_text(article.get('authors', 'Authors not specified'))
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Authors:</b> {authors}", authors_style))
                         
-                        try:
-                            # === МЕТАДАННЫЕ (журнал, год, том, выпуск, страницы) ===
-                            journal = clean_text(article.get('journal_name', journal_name))
-                            year = article.get('publication_year', '')
-                            volume = article.get('volume', '')
-                            issue = article.get('issue', '')
-                            pages = article.get('pages', '')
-                            
-                            meta_parts = [f"<b>{journal}</b>"]
-                            if year:
-                                meta_parts.append(str(year))
-                            if volume:
-                                meta_parts.append(f"Том {volume}")
-                            if issue:
-                                meta_parts.append(f"Вып. {issue}")
-                            if pages:
-                                meta_parts.append(f"С. {pages}")
-                            
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
-                        except Exception as e:
-                            logger.error(f"Error processing metadata for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Metadata unavailable]", meta_style))
+                        journal = clean_text(article.get('journal_name', journal_name))
+                        year = article.get('publication_year', '')
+                        volume = article.get('volume', '')
+                        issue = article.get('issue', '')
+                        pages = article.get('pages', '')
                         
-                        try:
-                            # === ЦИТИРОВАНИЯ ===
-                            citations = article.get('cited_by_count', 0)
-                            citations_per_year = article.get('citations_per_year', 0)
-                            is_highly = article.get('is_highly_cited', False)
-                            
-                            citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
-                            if is_highly:
-                                citation_text += " 🔥 Активно цитируемая"
-                            
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
-                        except Exception as e:
-                            logger.error(f"Error processing citations for article {idx}: {e}")
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Цитирований:</b> [Data unavailable]", citation_style))
+                        meta_parts = [f"<b>{journal}</b>"]
+                        if year:
+                            meta_parts.append(str(year))
+                        if volume:
+                            meta_parts.append(f"Volume {volume}")
+                        if issue:
+                            meta_parts.append(f"Issue {issue}")
+                        if pages:
+                            meta_parts.append(f"pp. {pages}")
                         
-                        # === DOI - ВЫНОСИМ В ОТДЕЛЬНЫЙ БЛОК С МАКСИМАЛЬНОЙ ЗАЩИТОЙ ===
-                        try:
-                            doi_url = article.get('doi_url', '')
-                            doi_clean = article.get('doi', '')
-                            
-                            # Логируем для диагностики
-                            if doi_url:
-                                logger.info(f"Article {idx} has DOI: {doi_url}")
-                            else:
-                                logger.warning(f"Article {idx} has NO DOI. Available keys: {list(article.keys())[:10]}")
-                            
-                            # Показываем DOI, даже если он неполный
-                            if doi_url:
-                                # Очищаем DOI для отображения
-                                doi_display = doi_url.replace('https://doi.org/', '').replace('http://doi.org/', '')
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_display}</link>", meta_style))
-                            elif doi_clean:
-                                # Если есть только чистый DOI без URL
-                                doi_url_full = f"https://doi.org/{doi_clean}"
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url_full}'>{doi_clean}</link>", meta_style))
-                            else:
-                                # Если DOI нет, показываем сообщение (но не прерываем)
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> Not available", meta_style))
-                        except Exception as e:
-                            logger.error(f"CRITICAL: Error processing DOI for article {idx}: {e}")
-                            # Даже в случае ошибки добавляем строку с сообщением
-                            try:
-                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> [Error retrieving DOI]", meta_style))
-                            except:
-                                pass
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
                         
-                        # Разделитель между статьями
-                        if idx < len(articles):
-                            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + "─" * 40, separator_style))
-                            story.append(Spacer(1, 0.1*cm))
+                        # Always show citation info for individual articles
+                        citations = article.get('cited_by_count', 0)
+                        citations_per_year = article.get('citations_per_year', 0)
+                        is_highly = article.get('is_highly_cited', False)
+                        
+                        citation_text = f"<b>Citations:</b> {citations} | <b>per year:</b> {citations_per_year}"
+                        if is_highly:
+                            citation_text += " 🔥 Highly Cited"
+                        
+                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
+                        
+                        doi_url = article.get('doi_url', '')
+                        if doi_url:
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_url}</link>", meta_style))
                         
                         story.append(Spacer(1, 0.15*cm))
                         
