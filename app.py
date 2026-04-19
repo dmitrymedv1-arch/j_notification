@@ -2228,44 +2228,103 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                     story.append(Spacer(1, 0.2*cm))
                     
                     for idx, article in enumerate(articles, 1):
-                        title = clean_text(article.get('title', 'Без названия'))
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
+                        try:
+                            # === НАЗВАНИЕ ===
+                            title = article.get('title', 'Без названия')
+                            if title and isinstance(title, str):
+                                title = clean_text(title)
+                            else:
+                                title = 'Без названия'
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
+                        except Exception as e:
+                            logger.error(f"Error processing title for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. [Title unavailable]", article_title_style))
                         
-                        authors = clean_text(article.get('authors', 'Авторы не указаны'))
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
+                        try:
+                            # === АВТОРЫ ===
+                            authors = article.get('authors', 'Авторы не указаны')
+                            if authors and isinstance(authors, str):
+                                authors = clean_text(authors)
+                            else:
+                                authors = 'Авторы не указаны'
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
+                        except Exception as e:
+                            logger.error(f"Error processing authors for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> [Information unavailable]", authors_style))
                         
-                        journal = clean_text(article.get('journal_name', journal_name))
-                        year = article.get('publication_year', '')
-                        volume = article.get('volume', '')
-                        issue = article.get('issue', '')
-                        pages = article.get('pages', '')
+                        try:
+                            # === МЕТАДАННЫЕ (журнал, год, том, выпуск, страницы) ===
+                            journal = clean_text(article.get('journal_name', journal_name))
+                            year = article.get('publication_year', '')
+                            volume = article.get('volume', '')
+                            issue = article.get('issue', '')
+                            pages = article.get('pages', '')
+                            
+                            meta_parts = [f"<b>{journal}</b>"]
+                            if year:
+                                meta_parts.append(str(year))
+                            if volume:
+                                meta_parts.append(f"Том {volume}")
+                            if issue:
+                                meta_parts.append(f"Вып. {issue}")
+                            if pages:
+                                meta_parts.append(f"С. {pages}")
+                            
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
+                        except Exception as e:
+                            logger.error(f"Error processing metadata for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Metadata unavailable]", meta_style))
                         
-                        meta_parts = [f"<b>{journal}</b>"]
-                        if year:
-                            meta_parts.append(str(year))
-                        if volume:
-                            meta_parts.append(f"Том {volume}")
-                        if issue:
-                            meta_parts.append(f"Вып. {issue}")
-                        if pages:
-                            meta_parts.append(f"С. {pages}")
+                        try:
+                            # === ЦИТИРОВАНИЯ ===
+                            citations = article.get('cited_by_count', 0)
+                            citations_per_year = article.get('citations_per_year', 0)
+                            is_highly = article.get('is_highly_cited', False)
+                            
+                            citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
+                            if is_highly:
+                                citation_text += " 🔥 Активно цитируемая"
+                            
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
+                        except Exception as e:
+                            logger.error(f"Error processing citations for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Цитирований:</b> [Data unavailable]", citation_style))
                         
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
+                        # === DOI - ВЫНОСИМ В ОТДЕЛЬНЫЙ БЛОК С МАКСИМАЛЬНОЙ ЗАЩИТОЙ ===
+                        try:
+                            doi_url = article.get('doi_url', '')
+                            doi_clean = article.get('doi', '')
+                            
+                            # Логируем для диагностики
+                            if doi_url:
+                                logger.info(f"Article {idx} has DOI: {doi_url}")
+                            else:
+                                logger.warning(f"Article {idx} has NO DOI. Available keys: {list(article.keys())[:10]}")
+                            
+                            # Показываем DOI, даже если он неполный
+                            if doi_url:
+                                # Очищаем DOI для отображения
+                                doi_display = doi_url.replace('https://doi.org/', '').replace('http://doi.org/', '')
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_display}</link>", meta_style))
+                            elif doi_clean:
+                                # Если есть только чистый DOI без URL
+                                doi_url_full = f"https://doi.org/{doi_clean}"
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url_full}'>{doi_clean}</link>", meta_style))
+                            else:
+                                # Если DOI нет, показываем сообщение (но не прерываем)
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> Not available", meta_style))
+                        except Exception as e:
+                            logger.error(f"CRITICAL: Error processing DOI for article {idx}: {e}")
+                            # Даже в случае ошибки добавляем строку с сообщением
+                            try:
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> [Error retrieving DOI]", meta_style))
+                            except:
+                                pass
                         
-                        # Always show citation info for individual articles
-                        citations = article.get('cited_by_count', 0)
-                        citations_per_year = article.get('citations_per_year', 0)
-                        is_highly = article.get('is_highly_cited', False)
-                        
-                        citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
-                        if is_highly:
-                            citation_text += " 🔥 Активно цитируемая"
-                        
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
-                        
-                        doi_url = article.get('doi_url', '')
-                        if doi_url:
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_url}</link>", meta_style))
+                        # Разделитель между статьями
+                        if idx < len(articles):
+                            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + "─" * 40, separator_style))
+                            story.append(Spacer(1, 0.1*cm))
                         
                         story.append(Spacer(1, 0.15*cm))
                         
@@ -2856,46 +2915,105 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                     else:
                         story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{clean_text(topic)} — {topic_articles} articles", topic_style))
                     story.append(Spacer(1, 0.2*cm))
-                    
+
                     for idx, article in enumerate(articles, 1):
-                        title = clean_text(article.get('title', 'No title'))
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
+                        try:
+                            # === НАЗВАНИЕ ===
+                            title = article.get('title', 'Без названия')
+                            if title and isinstance(title, str):
+                                title = clean_text(title)
+                            else:
+                                title = 'Без названия'
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. {title}", article_title_style))
+                        except Exception as e:
+                            logger.error(f"Error processing title for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{idx}. [Title unavailable]", article_title_style))
                         
-                        authors = clean_text(article.get('authors', 'Authors not specified'))
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Authors:</b> {authors}", authors_style))
+                        try:
+                            # === АВТОРЫ ===
+                            authors = article.get('authors', 'Авторы не указаны')
+                            if authors and isinstance(authors, str):
+                                authors = clean_text(authors)
+                            else:
+                                authors = 'Авторы не указаны'
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> {authors}", authors_style))
+                        except Exception as e:
+                            logger.error(f"Error processing authors for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Авторы:</b> [Information unavailable]", authors_style))
                         
-                        journal = clean_text(article.get('journal_name', journal_name))
-                        year = article.get('publication_year', '')
-                        volume = article.get('volume', '')
-                        issue = article.get('issue', '')
-                        pages = article.get('pages', '')
+                        try:
+                            # === МЕТАДАННЫЕ (журнал, год, том, выпуск, страницы) ===
+                            journal = clean_text(article.get('journal_name', journal_name))
+                            year = article.get('publication_year', '')
+                            volume = article.get('volume', '')
+                            issue = article.get('issue', '')
+                            pages = article.get('pages', '')
+                            
+                            meta_parts = [f"<b>{journal}</b>"]
+                            if year:
+                                meta_parts.append(str(year))
+                            if volume:
+                                meta_parts.append(f"Том {volume}")
+                            if issue:
+                                meta_parts.append(f"Вып. {issue}")
+                            if pages:
+                                meta_parts.append(f"С. {pages}")
+                            
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
+                        except Exception as e:
+                            logger.error(f"Error processing metadata for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[Metadata unavailable]", meta_style))
                         
-                        meta_parts = [f"<b>{journal}</b>"]
-                        if year:
-                            meta_parts.append(str(year))
-                        if volume:
-                            meta_parts.append(f"Volume {volume}")
-                        if issue:
-                            meta_parts.append(f"Issue {issue}")
-                        if pages:
-                            meta_parts.append(f"pp. {pages}")
+                        try:
+                            # === ЦИТИРОВАНИЯ ===
+                            citations = article.get('cited_by_count', 0)
+                            citations_per_year = article.get('citations_per_year', 0)
+                            is_highly = article.get('is_highly_cited', False)
+                            
+                            citation_text = f"<b>Цитирований:</b> {citations} | <b>в год:</b> {citations_per_year}"
+                            if is_highly:
+                                citation_text += " 🔥 Активно цитируемая"
+                            
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
+                        except Exception as e:
+                            logger.error(f"Error processing citations for article {idx}: {e}")
+                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Цитирований:</b> [Data unavailable]", citation_style))
                         
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{', '.join(meta_parts)}", meta_style))
+                        # === DOI - ВЫНОСИМ В ОТДЕЛЬНЫЙ БЛОК С МАКСИМАЛЬНОЙ ЗАЩИТОЙ ===
+                        try:
+                            doi_url = article.get('doi_url', '')
+                            doi_clean = article.get('doi', '')
+                            
+                            # Логируем для диагностики
+                            if doi_url:
+                                logger.info(f"Article {idx} has DOI: {doi_url}")
+                            else:
+                                logger.warning(f"Article {idx} has NO DOI. Available keys: {list(article.keys())[:10]}")
+                            
+                            # Показываем DOI, даже если он неполный
+                            if doi_url:
+                                # Очищаем DOI для отображения
+                                doi_display = doi_url.replace('https://doi.org/', '').replace('http://doi.org/', '')
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_display}</link>", meta_style))
+                            elif doi_clean:
+                                # Если есть только чистый DOI без URL
+                                doi_url_full = f"https://doi.org/{doi_clean}"
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url_full}'>{doi_clean}</link>", meta_style))
+                            else:
+                                # Если DOI нет, показываем сообщение (но не прерываем)
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> Not available", meta_style))
+                        except Exception as e:
+                            logger.error(f"CRITICAL: Error processing DOI for article {idx}: {e}")
+                            # Даже в случае ошибки добавляем строку с сообщением
+                            try:
+                                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> [Error retrieving DOI]", meta_style))
+                            except:
+                                pass
                         
-                        # Always show citation info for individual articles
-                        citations = article.get('cited_by_count', 0)
-                        citations_per_year = article.get('citations_per_year', 0)
-                        is_highly = article.get('is_highly_cited', False)
-                        
-                        citation_text = f"<b>Citations:</b> {citations} | <b>per year:</b> {citations_per_year}"
-                        if is_highly:
-                            citation_text += " 🔥 Highly Cited"
-                        
-                        story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{citation_text}", citation_style))
-                        
-                        doi_url = article.get('doi_url', '')
-                        if doi_url:
-                            story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>DOI:</b> <link href='{doi_url}'>{doi_url}</link>", meta_style))
+                        # Разделитель между статьями
+                        if idx < len(articles):
+                            story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + "─" * 40, separator_style))
+                            story.append(Spacer(1, 0.1*cm))
                         
                         story.append(Spacer(1, 0.15*cm))
                         
