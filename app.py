@@ -698,57 +698,6 @@ def parse_issn(issn_input: str) -> Optional[str]:
     return None
 
 # ============================================================================
-# ROBUST DOI EXTRACTION
-# ============================================================================
-
-def extract_doi_safe(article: dict) -> str:
-    """
-    Надежное извлечение DOI из метаданных статьи.
-    Работает даже если другие поля статьи повреждены.
-    
-    Returns:
-        str: DOI URL или пустая строка
-    """
-    if not article:
-        return ''
-    
-    # Прямой доступ к полю doi - это самый надежный способ
-    doi_raw = article.get('doi')
-    
-    if doi_raw:
-        doi_str = str(doi_raw)
-        # Очищаем от мусора, но сохраняем структуру DOI
-        # Удаляем только явно проблемные символы, но не трогаем буквы/цифры/знаки
-        doi_str = re.sub(r'[^\w\d\.\/\-\:]', '', doi_str)
-        
-        # Если DOI уже содержит https://doi.org/, оставляем как есть
-        if doi_str.startswith('https://doi.org/'):
-            return doi_str
-        # Если DOI содержит только идентификатор (10.xxxx/xxxx), добавляем префикс
-        elif doi_str.startswith('10.'):
-            return f"https://doi.org/{doi_str}"
-        # Если получили что-то другое, но похожее на DOI
-        elif 'doi.org' in doi_str:
-            # Извлекаем часть после doi.org/
-            match = re.search(r'doi\.org/(.+)$', doi_str)
-            if match:
-                return f"https://doi.org/{match.group(1)}"
-    
-    # Если DOI нет, проверяем альтернативные поля
-    # Некоторые статьи могут иметь DOI в ids
-    ids = article.get('ids', {})
-    if ids:
-        doi_from_ids = ids.get('doi')
-        if doi_from_ids:
-            doi_str = str(doi_from_ids)
-            if doi_str.startswith('https://doi.org/'):
-                return doi_str
-            elif doi_str.startswith('10.'):
-                return f"https://doi.org/{doi_str}"
-    
-    return ''
-
-# ============================================================================
 # JOURNAL SEARCH IN OPENALEX
 # ============================================================================
 
@@ -1061,12 +1010,10 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
     if not article:
         return {}
     
-    doi_url_full = extract_doi_safe(article)
-    
-    # Извлекаем чистый DOI без префикса для отображения
+    doi_raw = article.get('doi')
     doi_clean = ''
-    if doi_url_full:
-        doi_clean = doi_url_full.replace('https://doi.org/', '')
+    if doi_raw:
+        doi_clean = str(doi_raw).replace('https://doi.org/', '')
     
     # Extract publication info
     biblio = article.get('biblio', {})
@@ -1148,7 +1095,7 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
     
     enriched = {
         'doi': doi_clean,
-        'doi_url': doi_url_full,
+        'doi_url': f"https://doi.org/{doi_clean}" if doi_clean else '',
         'title': article.get('title', ''),
         'publication_year': article.get('publication_year', 0),
         'publication_date': article.get('publication_date', ''),
