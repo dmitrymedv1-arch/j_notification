@@ -673,29 +673,63 @@ def clear_old_cache():
 
 def parse_issn(issn_input: str) -> Optional[str]:
     """
-    Parse ISSN from various formats:
-    - "1234-5678" -> "12345678"
-    - "1234 5678" -> "12345678"
-    - "12345678" -> "12345678"
-    - "ISSN 1234-5678" -> "12345678"
+    Parse ISSN from various formats with better validation.
     """
     if not issn_input:
         return None
     
-    # Remove ISSN prefix if present
+    # Remove ISSN prefix and extra spaces
     issn_clean = re.sub(r'^ISSN\s*', '', issn_input, flags=re.IGNORECASE)
+    issn_clean = issn_clean.strip()
     
-    # Keep only digits
-    digits = re.sub(r'[^0-9]', '', issn_clean)
+    # Keep only digits and X (for ISSN-L)
+    digits = re.sub(r'[^0-9X]', '', issn_clean.upper())
     
-    # ISSN must be 8 digits
+    # ISSN must be 8 characters (digits or X)
     if len(digits) == 8:
-        return digits
+        # Validate ISSN checksum (optional but recommended)
+        if validate_issn_checksum(digits):
+            logger.info(f"Valid ISSN parsed: {digits}")
+            return digits
+        else:
+            logger.warning(f"Invalid ISSN checksum: {digits}")
+            # Still return it, maybe it's valid
+            return digits
     elif len(digits) == 7:
         logger.warning(f"ISSN has 7 digits: {digits}")
         return None
+    else:
+        logger.warning(f"Invalid ISSN format: {issn_input} -> {digits}")
+        return None
+
+def validate_issn_checksum(issn: str) -> bool:
+    """
+    Validate ISSN checksum (8 characters, last is check digit).
+    """
+    if len(issn) != 8:
+        return False
     
-    return None
+    # Calculate checksum
+    total = 0
+    for i in range(7):
+        char = issn[i]
+        if char == 'X':
+            digit = 10
+        else:
+            digit = int(char)
+        total += digit * (8 - i)
+    
+    # Calculate check digit
+    remainder = total % 11
+    if remainder == 0:
+        check_digit = '0'
+    else:
+        check_digit = str(11 - remainder)
+        if check_digit == '10':
+            check_digit = 'X'
+    
+    # Compare with given check digit
+    return issn[7] == check_digit
 
 # ============================================================================
 # JOURNAL SEARCH IN OPENALEX
@@ -703,74 +737,117 @@ def parse_issn(issn_input: str) -> Optional[str]:
 
 def get_journal_by_issn(issn: str) -> Optional[dict]:
     """
-    Search for journal in OpenAlex by ISSN.
+    Search for journal in OpenAlex by ISSN with multiple attempts.
     """
-    # Check cache
-    cached = get_cached_source(issn)
-    if cached:
-        logger.info(f"Using cached journal data for ISSN {issn}")
+    # Clean ISSN
+    issn_clean = re.sub(r'[^0-9X]', '', issn.upper())
+    if len(issn_clean) != 8:
+        logger.error(f"Invalid ISSN length: {issn_clean}")
+        return None
+    
+    # Try both formats: with and without hyphen
+    issn_formatted = f"{issn_clean[:4]}-{issn_clean[4:]}"
+    issn_no_hyphen = issn_clean
+    
+    logger.info(f"Searching for journal with ISSN {issn_formatted} or {issn_no_hyphen}")
+    
+    # Check cache first - but also check if it's a valid result
+    cached = get_cached_source(issn_clean)
+    if cached and cached.get('id'):  # Make sure it's a valid journal
+        logger.info(f"Using cached journal data for ISSN {issn_clean}")
         return cached
     
-    # Format ISSN as XXXX-XXXX for OpenAlex
-    issn_clean = re.sub(r'[^0-9X]', '', issn.upper())
-    if len(issn_clean) == 8:
-        issn_formatted = f"{issn_clean[:4]}-{issn_clean[4:]}"
-    else:
-        issn_formatted = issn
+    # Try multiple search approaches
+    search_approaches = [
+        # 1. Search by ISSN with hyphen
+        {
+            'filter': f"issn:{issn_formatted}",
+            'desc': "ISSN with hyphen"
+        },
+        # 2. Search by ISSN without hyphen
+        {
+            'filter': f"issn:{issn_no_hyphen}",
+            'desc': "ISSN without hyphen"
+        },
+        # 3. Search by ISSN-L
+        {
+            'filter': f"issn_l:{issn_formatted}",
+            'desc': "ISSN-L with hyphen"
+        },
+        {
+            'filter': f"issn_l:{issn_no_hyphen}",
+            'desc': "ISSN-L without hyphen"
+        },
+    ]
     
-    logger.info(f"Searching for journal with ISSN {issn_formatted}")
+    for approach in search_approaches:
+        try:
+            url = f"{OPENALEX_BASE_URL}/sources"
+            params = {
+                "filter": approach['filter'],
+                "mailto": MAILTO,
+                "per-page": 5  # Get more results to check
+            }
+            
+            logger.info(f"Trying approach: {approach['desc']} with filter: {approach['filter']}")
+            response = requests.get(url, params=params, headers=POLITE_POOL_HEADER, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                results = data.get('results', [])
+                
+                if results:
+                    # Try to find exact match
+                    for source in results:
+                        # Check if this source matches our ISSN
+                        source_issns = source.get('issn', []) or []
+                        source_issn_l = source.get('issn_l')
+                        
+                        if (issn_formatted in source_issns or 
+                            issn_no_hyphen in source_issns or
+                            source_issn_l == issn_formatted or
+                            source_issn_l == issn_no_hyphen):
+                            
+                            logger.info(f"Found journal: {source.get('display_name')} via {approach['desc']}")
+                            cache_source(issn_clean, source)
+                            return source
+                    
+                    # If no exact match but we have results, take first
+                    source = results[0]
+                    logger.info(f"Found journal (approximate): {source.get('display_name')} via {approach['desc']}")
+                    cache_source(issn_clean, source)
+                    return source
+                    
+        except Exception as e:
+            logger.error(f"Error in {approach['desc']}: {str(e)}")
+            continue
     
+    # If direct search fails, try alternative method through works
     try:
-        # OpenAlex uses ISSN-L or regular ISSN
-        url = f"{OPENALEX_BASE_URL}/sources"
-        params = {
-            "filter": f"issn:{issn_formatted}",
+        logger.info("Trying alternative search through works...")
+        alt_url = f"{OPENALEX_BASE_URL}/works"
+        alt_params = {
+            "filter": f"primary_location.source.issn:{issn_formatted}",
+            "per-page": 1,
             "mailto": MAILTO
         }
+        alt_response = requests.get(alt_url, params=alt_params, headers=POLITE_POOL_HEADER, timeout=30)
         
-        response = requests.get(url, params=params, headers=POLITE_POOL_HEADER, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            results = data.get('results', [])
-            
-            if results:
-                source = results[0]
-                cache_source(issn, source)
-                logger.info(f"Found journal: {source.get('display_name')}")
-                return source
-            else:
-                # Try searching through primary_location.source.issn in works
-                logger.warning(f"No journal found for ISSN {issn_formatted}, trying alternative search...")
-                alt_url = f"{OPENALEX_BASE_URL}/works"
-                alt_params = {
-                    "filter": f"primary_location.source.issn:{issn_formatted}",
-                    "per-page": 1,
-                    "mailto": MAILTO
-                }
-                alt_response = requests.get(alt_url, params=alt_params, headers=POLITE_POOL_HEADER, timeout=30)
-                
-                if alt_response.status_code == 200:
-                    alt_data = alt_response.json()
-                    if alt_data.get('results'):
-                        # Extract journal info from first work
-                        first_work = alt_data['results'][0]
-                        primary_location = first_work.get('primary_location', {})
-                        source = primary_location.get('source', {})
-                        if source:
-                            cache_source(issn, source)
-                            logger.info(f"Found journal via alternative method: {source.get('display_name')}")
-                            return source
-                
-                logger.warning(f"No journal found for ISSN {issn_formatted}")
-                return None
-        else:
-            logger.error(f"Error fetching journal: {response.status_code}")
-            return None
-            
+        if alt_response.status_code == 200:
+            alt_data = alt_response.json()
+            if alt_data.get('results'):
+                first_work = alt_data['results'][0]
+                primary_location = first_work.get('primary_location', {})
+                source = primary_location.get('source', {})
+                if source and source.get('id'):
+                    cache_source(issn_clean, source)
+                    logger.info(f"Found journal via alternative method: {source.get('display_name')}")
+                    return source
     except Exception as e:
-        logger.error(f"Error in get_journal_by_issn: {str(e)}")
-        return None
+        logger.error(f"Error in alternative search: {str(e)}")
+    
+    logger.warning(f"No journal found for ISSN {issn_formatted}")
+    return None
 
 # ============================================================================
 # JOURNAL ARTICLES LOADING
