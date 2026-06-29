@@ -737,7 +737,8 @@ def validate_issn_checksum(issn: str) -> bool:
 
 def get_journal_by_issn(issn: str) -> Optional[dict]:
     """
-    Search for journal in OpenAlex by ISSN with multiple attempts.
+    Enhanced search for journal in OpenAlex by ISSN with better handling
+    for electronic journals.
     """
     # Clean ISSN
     issn_clean = re.sub(r'[^0-9X]', '', issn.upper())
@@ -745,38 +746,44 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
         logger.error(f"Invalid ISSN length: {issn_clean}")
         return None
     
-    # Try both formats: with and without hyphen
-    issn_formatted = f"{issn_clean[:4]}-{issn_clean[4:]}"
+    # Prepare all possible ISSN formats
+    issn_with_hyphen = f"{issn_clean[:4]}-{issn_clean[4:]}"
     issn_no_hyphen = issn_clean
     
-    logger.info(f"Searching for journal with ISSN {issn_formatted} or {issn_no_hyphen}")
+    # Also try variations if it's an e-ISSN (starts with 2)
+    possible_issns = [issn_no_hyphen, issn_with_hyphen]
     
-    # Check cache first - but also check if it's a valid result
+    # If it's an e-ISSN (starts with 2), also try the print ISSN if known
+    # But we don't know the print ISSN, so we'll just search with what we have
+    
+    logger.info(f"Searching for journal with ISSN: {issn_no_hyphen} / {issn_with_hyphen}")
+    
+    # Check cache first
     cached = get_cached_source(issn_clean)
-    if cached and cached.get('id'):  # Make sure it's a valid journal
+    if cached and cached.get('id'):
         logger.info(f"Using cached journal data for ISSN {issn_clean}")
         return cached
     
-    # Try multiple search approaches
+    # Try multiple search approaches - ORDER MATTERS!
     search_approaches = [
-        # 1. Search by ISSN with hyphen
-        {
-            'filter': f"issn:{issn_formatted}",
-            'desc': "ISSN with hyphen"
-        },
-        # 2. Search by ISSN without hyphen
+        # 1. Direct search by ISSN (OpenAlex handles both with and without hyphen)
         {
             'filter': f"issn:{issn_no_hyphen}",
             'desc': "ISSN without hyphen"
         },
-        # 3. Search by ISSN-L
+        # 2. Search by ISSN with hyphen
         {
-            'filter': f"issn_l:{issn_formatted}",
-            'desc': "ISSN-L with hyphen"
+            'filter': f"issn:{issn_with_hyphen}",
+            'desc': "ISSN with hyphen"
         },
+        # 3. Search by ISSN-L (Linking ISSN)
         {
             'filter': f"issn_l:{issn_no_hyphen}",
             'desc': "ISSN-L without hyphen"
+        },
+        {
+            'filter': f"issn_l:{issn_with_hyphen}",
+            'desc': "ISSN-L with hyphen"
         },
     ]
     
@@ -786,10 +793,11 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
             params = {
                 "filter": approach['filter'],
                 "mailto": MAILTO,
-                "per-page": 5  # Get more results to check
+                "per-page": 10,  # Get more results to check
+                "sort": "relevance_score:desc"  # Get most relevant first
             }
             
-            logger.info(f"Trying approach: {approach['desc']} with filter: {approach['filter']}")
+            logger.info(f"Trying approach: {approach['desc']}")
             response = requests.get(url, params=params, headers=POLITE_POOL_HEADER, timeout=30)
             
             if response.status_code == 200:
@@ -797,56 +805,108 @@ def get_journal_by_issn(issn: str) -> Optional[dict]:
                 results = data.get('results', [])
                 
                 if results:
-                    # Try to find exact match
+                    logger.info(f"Found {len(results)} results for {approach['desc']}")
+                    
+                    # Check each result for matching ISSN
                     for source in results:
-                        # Check if this source matches our ISSN
+                        # Get all ISSNs for this source
                         source_issns = source.get('issn', []) or []
-                        source_issn_l = source.get('issn_l')
+                        source_issn_l = source.get('issn_l', '')
                         
-                        if (issn_formatted in source_issns or 
-                            issn_no_hyphen in source_issns or
-                            source_issn_l == issn_formatted or
-                            source_issn_l == issn_no_hyphen):
-                            
-                            logger.info(f"Found journal: {source.get('display_name')} via {approach['desc']}")
+                        # Check if our ISSN matches any of the source's ISSNs
+                        issn_match = False
+                        
+                        # Check against array of ISSNs
+                        for source_issn in source_issns:
+                            # Clean both for comparison
+                            source_issn_clean = re.sub(r'[^0-9X]', '', source_issn.upper())
+                            if source_issn_clean == issn_clean:
+                                issn_match = True
+                                break
+                        
+                        # Check against ISSN-L
+                        if source_issn_l:
+                            source_issn_l_clean = re.sub(r'[^0-9X]', '', source_issn_l.upper())
+                            if source_issn_l_clean == issn_clean:
+                                issn_match = True
+                        
+                        if issn_match:
+                            logger.info(f"Found EXACT match: {source.get('display_name')} via {approach['desc']}")
                             cache_source(issn_clean, source)
                             return source
                     
-                    # If no exact match but we have results, take first
+                    # If no exact match, take the first result (might be a close match)
                     source = results[0]
-                    logger.info(f"Found journal (approximate): {source.get('display_name')} via {approach['desc']}")
+                    logger.info(f"Found APPROXIMATE match: {source.get('display_name')} via {approach['desc']}")
+                    logger.info(f"  Source ISSNs: {source.get('issn', [])}")
+                    logger.info(f"  Source ISSN-L: {source.get('issn_l', '')}")
+                    
+                    # Cache it anyway
                     cache_source(issn_clean, source)
                     return source
                     
+            else:
+                logger.warning(f"API returned status {response.status_code} for {approach['desc']}")
+                
         except Exception as e:
             logger.error(f"Error in {approach['desc']}: {str(e)}")
             continue
     
-    # If direct search fails, try alternative method through works
+    # If direct search fails, try searching through works (more reliable for some electronic journals)
+    logger.info("Trying alternative search through works...")
     try:
-        logger.info("Trying alternative search through works...")
+        # Try to find any work from this journal
         alt_url = f"{OPENALEX_BASE_URL}/works"
         alt_params = {
-            "filter": f"primary_location.source.issn:{issn_formatted}",
+            "filter": f"primary_location.source.issn:{issn_no_hyphen}",
             "per-page": 1,
-            "mailto": MAILTO
+            "mailto": MAILTO,
+            "sort": "publication_date:desc"
         }
+        
         alt_response = requests.get(alt_url, params=alt_params, headers=POLITE_POOL_HEADER, timeout=30)
         
         if alt_response.status_code == 200:
             alt_data = alt_response.json()
             if alt_data.get('results'):
                 first_work = alt_data['results'][0]
+                
+                # Try to get source from primary_location
                 primary_location = first_work.get('primary_location', {})
                 source = primary_location.get('source', {})
+                
                 if source and source.get('id'):
+                    # Verify this source has our ISSN
+                    source_issns = source.get('issn', []) or []
+                    source_issn_l = source.get('issn_l', '')
+                    
+                    for src_issn in source_issns:
+                        src_issn_clean = re.sub(r'[^0-9X]', '', src_issn.upper())
+                        if src_issn_clean == issn_clean:
+                            logger.info(f"Found journal via works: {source.get('display_name')}")
+                            cache_source(issn_clean, source)
+                            return source
+                    
+                    # If not exact match but we have a source, return it
+                    logger.info(f"Found journal via works (approximate): {source.get('display_name')}")
                     cache_source(issn_clean, source)
-                    logger.info(f"Found journal via alternative method: {source.get('display_name')}")
                     return source
+                    
+                # Also check host_venue
+                host_venue = first_work.get('host_venue', {})
+                if host_venue and host_venue.get('id'):
+                    # Try to get source by ID
+                    source_id = host_venue.get('id')
+                    if source_id:
+                        source_response = requests.get(source_id, headers=POLITE_POOL_HEADER, timeout=30)
+                        if source_response.status_code == 200:
+                            source = source_response.json()
+                            cache_source(issn_clean, source)
+                            return source
     except Exception as e:
         logger.error(f"Error in alternative search: {str(e)}")
     
-    logger.warning(f"No journal found for ISSN {issn_formatted}")
+    logger.warning(f"No journal found for ISSN {issn_clean}")
     return None
 
 # ============================================================================
