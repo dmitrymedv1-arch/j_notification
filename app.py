@@ -1082,6 +1082,11 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
         article, None, threshold_total, threshold_per_year
     )
     
+    # Calculate average citations per article (for sorting)
+    # For individual articles, we use citations_per_year as the sorting metric
+    # but we also store citations_total for reference
+    avg_citations = citations_per_year  # This will be used for sorting
+    
     # Get source (journal) info
     journal_name = ''
     primary_location = article.get('primary_location')
@@ -1101,6 +1106,7 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
         'publication_date': article.get('publication_date', ''),
         'cited_by_count': citations_total,
         'citations_per_year': round(citations_per_year, 1),
+        'avg_citations': round(citations_per_year, 1),  # For sorting
         'is_highly_cited': is_highly_cited,
         'authors': authors_str,
         'authors_list': authors,
@@ -1157,7 +1163,17 @@ def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = Non
         for field, subfields in fields.items():
             result[domain][field] = {}
             for subfield, topics in subfields.items():
-                result[domain][field][subfield] = dict(topics)
+                # Sort articles within each topic by citations_per_year (descending)
+                sorted_topics = {}
+                for topic, articles_list in topics.items():
+                    # Sort articles by citations_per_year (highest first)
+                    sorted_articles = sorted(
+                        articles_list,
+                        key=lambda x: x.get('citations_per_year', 0),
+                        reverse=True
+                    )
+                    sorted_topics[topic] = sorted_articles
+                result[domain][field][subfield] = sorted_topics
     
     return result
 
@@ -1193,43 +1209,48 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
                 topic_stats = {}
                 
                 for topic, articles in topics.items():
+                    # Articles are already sorted by citations_per_year
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                    topic_avg_citations = topic_citations / topic_articles if topic_articles > 0 else 0
                     
                     topic_stats[topic] = {
                         'articles': topic_articles,
                         'citations': topic_citations if include_metrics else None,
-                        'avg_citations': (topic_citations / topic_articles) if (include_metrics and topic_articles > 0) else None,
-                        'articles_list': articles
+                        'avg_citations': topic_avg_citations if include_metrics else None,
+                        'articles_list': articles  # Already sorted
                     }
                     
                     subfield_articles += topic_articles
                     subfield_citations += topic_citations
                 
+                subfield_avg = subfield_citations / subfield_articles if subfield_articles > 0 else 0
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
                     'citations': subfield_citations if include_metrics else None,
-                    'avg_citations': (subfield_citations / subfield_articles) if (include_metrics and subfield_articles > 0) else None,
+                    'avg_citations': subfield_avg if include_metrics else None,
                     'topics': topic_stats
                 }
                 
                 field_articles += subfield_articles
                 field_citations += subfield_citations
             
+            field_avg = field_citations / field_articles if field_articles > 0 else 0
             field_stats[field] = {
                 'articles': field_articles,
                 'citations': field_citations if include_metrics else None,
-                'avg_citations': (field_citations / field_articles) if (include_metrics and field_articles > 0) else None,
+                'avg_citations': field_avg if include_metrics else None,
                 'subfields': subfield_stats
             }
             
             domain_articles += field_articles
             domain_citations += field_citations
         
+        domain_avg = domain_citations / domain_articles if domain_articles > 0 else 0
         stats[domain] = {
             'articles': domain_articles,
             'citations': domain_citations if include_metrics else None,
-            'avg_citations': (domain_citations / domain_articles) if (include_metrics and domain_articles > 0) else None,
+            'avg_citations': domain_avg if include_metrics else None,
             'fields': field_stats
         }
     
@@ -1244,6 +1265,7 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
     Sort hierarchy according to rules:
     - If include_metrics = True: sort by avg_citations (descending), then by name alphabetically
     - If include_metrics = False: sort by articles count (descending), then by name alphabetically
+    - Articles within each topic are always sorted by citations_per_year (descending)
     
     Returns sorted hierarchy as OrderedDict
     """
@@ -1332,6 +1354,8 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
                     )
                 
                 for topic in topics_sorted:
+                    # Articles within each topic are already sorted by citations_per_year
+                    # But we need to ensure they stay sorted
                     sorted_topics[topic] = topics[topic]
                 
                 sorted_subfields[subfield] = sorted_topics
