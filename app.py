@@ -2382,8 +2382,16 @@ class CitationPredictor:
         
         return len(name_styles) >= 2
     
-    def _get_topic_popularity(self, topic: str) -> float:
+    def _get_topic_popularity(self, topic) -> float:
         """Gets popularity score for a topic"""
+        # Handle case when topic is a dict (from OpenAlex)
+        if isinstance(topic, dict):
+            topic = topic.get('display_name', '')
+        elif not topic:
+            return 0.5
+        
+        topic = str(topic)
+        
         if not topic:
             return 0.5
         
@@ -2394,8 +2402,17 @@ class CitationPredictor:
         # Normalize: max 50 articles for full score
         return min(1, count / 50)
     
-    def _get_topic_emerging_score(self, topic: str) -> float:
+    def _get_topic_emerging_score(self, topic) -> float:
         """Gets emerging score for a topic"""
+        # Handle case when topic is a dict (from OpenAlex)
+        if isinstance(topic, dict):
+            topic = topic.get('display_name', '')
+        elif not topic:
+            return 0.3
+        
+        # Convert to string if needed
+        topic = str(topic)
+        
         if not topic:
             return 0.3
         
@@ -2403,9 +2420,10 @@ class CitationPredictor:
         emerging_keywords = ['emerging', 'novel', 'future', 'next-generation', 
                            'advanced', 'breakthrough', 'paradigm']
         
+        topic_lower = topic.lower()
         score = 0
         for kw in emerging_keywords:
-            if kw in topic.lower():
+            if kw in topic_lower:
                 score += 0.2
         
         return min(1, score)
