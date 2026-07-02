@@ -2669,6 +2669,12 @@ class EditorsChoiceModule:
         topics = set()
         
         primary_topic = article.get('primary_topic', '')
+        # Handle case when primary_topic is a dict (from OpenAlex)
+        if isinstance(primary_topic, dict):
+            primary_topic = primary_topic.get('display_name', '')
+        elif not isinstance(primary_topic, str):
+            primary_topic = str(primary_topic) if primary_topic else ''
+        
         if primary_topic:
             topics.add(primary_topic)
         
