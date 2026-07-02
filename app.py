@@ -2255,8 +2255,8 @@ class CitationPredictor:
     
     def __init__(self, training_data: List[dict]):
         self.training_data = training_data
+        self._cache_features = {}  # Initialize cache BEFORE calling _calculate_feature_weights
         self.feature_weights = self._calculate_feature_weights()
-        self._cache_features = {}
     
     def _calculate_feature_weights(self) -> Dict:
         """
