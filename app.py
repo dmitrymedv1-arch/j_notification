@@ -118,7 +118,13 @@ LANGUAGES = {
         'subfield_icon': '📂',
         'topic_icon': '🔬',
         'authors_icon': '👤',
-        'link_icon': '🔗'
+        'link_icon': '🔗',
+        'hot_topics_dashboard': '🔥 Hot Topics Dashboard',
+        'citation_dynamics': '📈 Citation Dynamics',
+        'author_dashboard': '👥 Author Dashboard',
+        'predictor_dashboard': '🔮 Citation Predictor',
+        'editors_choice': '⭐ Editor\'s Choice',
+        'editorial_dashboard': '📊 Editorial Dashboard'
     },
     'ru': {
         'app_title': '📚 Анализатор статей журнала Pro',
@@ -183,7 +189,13 @@ LANGUAGES = {
         'subfield_icon': '📂',
         'topic_icon': '🔬',
         'authors_icon': '👤',
-        'link_icon': '🔗'
+        'link_icon': '🔗',
+        'hot_topics_dashboard': '🔥 Дашборд горячих тем',
+        'citation_dynamics': '📈 Динамика цитирования',
+        'author_dashboard': '👥 Дашборд авторов',
+        'predictor_dashboard': '🔮 Предиктор цитирования',
+        'editors_choice': '⭐ Выбор редакции',
+        'editorial_dashboard': '📊 Дашборд редакции'
     }
 }
 
@@ -1082,11 +1094,6 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
         article, None, threshold_total, threshold_per_year
     )
     
-    # Calculate average citations per article (for sorting)
-    # For individual articles, we use citations_per_year as the sorting metric
-    # but we also store citations_total for reference
-    avg_citations = citations_per_year  # This will be used for sorting
-    
     # Get source (journal) info
     journal_name = ''
     primary_location = article.get('primary_location')
@@ -1106,7 +1113,6 @@ def enrich_article_data(article: dict, threshold_total: int = None, threshold_pe
         'publication_date': article.get('publication_date', ''),
         'cited_by_count': citations_total,
         'citations_per_year': round(citations_per_year, 1),
-        'avg_citations': round(citations_per_year, 1),  # For sorting
         'is_highly_cited': is_highly_cited,
         'authors': authors_str,
         'authors_list': authors,
@@ -1163,17 +1169,7 @@ def group_articles_by_hierarchy(articles: List[dict], threshold_total: int = Non
         for field, subfields in fields.items():
             result[domain][field] = {}
             for subfield, topics in subfields.items():
-                # Sort articles within each topic by citations_per_year (descending)
-                sorted_topics = {}
-                for topic, articles_list in topics.items():
-                    # Sort articles by citations_per_year (highest first)
-                    sorted_articles = sorted(
-                        articles_list,
-                        key=lambda x: x.get('citations_per_year', 0),
-                        reverse=True
-                    )
-                    sorted_topics[topic] = sorted_articles
-                result[domain][field][subfield] = sorted_topics
+                result[domain][field][subfield] = dict(topics)
     
     return result
 
@@ -1209,48 +1205,43 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
                 topic_stats = {}
                 
                 for topic, articles in topics.items():
-                    # Articles are already sorted by citations_per_year
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg_citations = topic_citations / topic_articles if topic_articles > 0 else 0
                     
                     topic_stats[topic] = {
                         'articles': topic_articles,
                         'citations': topic_citations if include_metrics else None,
-                        'avg_citations': topic_avg_citations if include_metrics else None,
-                        'articles_list': articles  # Already sorted
+                        'avg_citations': (topic_citations / topic_articles) if (include_metrics and topic_articles > 0) else None,
+                        'articles_list': articles
                     }
                     
                     subfield_articles += topic_articles
                     subfield_citations += topic_citations
                 
-                subfield_avg = subfield_citations / subfield_articles if subfield_articles > 0 else 0
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
                     'citations': subfield_citations if include_metrics else None,
-                    'avg_citations': subfield_avg if include_metrics else None,
+                    'avg_citations': (subfield_citations / subfield_articles) if (include_metrics and subfield_articles > 0) else None,
                     'topics': topic_stats
                 }
                 
                 field_articles += subfield_articles
                 field_citations += subfield_citations
             
-            field_avg = field_citations / field_articles if field_articles > 0 else 0
             field_stats[field] = {
                 'articles': field_articles,
                 'citations': field_citations if include_metrics else None,
-                'avg_citations': field_avg if include_metrics else None,
+                'avg_citations': (field_citations / field_articles) if (include_metrics and field_articles > 0) else None,
                 'subfields': subfield_stats
             }
             
             domain_articles += field_articles
             domain_citations += field_citations
         
-        domain_avg = domain_citations / domain_articles if domain_articles > 0 else 0
         stats[domain] = {
             'articles': domain_articles,
             'citations': domain_citations if include_metrics else None,
-            'avg_citations': domain_avg if include_metrics else None,
+            'avg_citations': (domain_citations / domain_articles) if (include_metrics and domain_articles > 0) else None,
             'fields': field_stats
         }
     
@@ -1265,7 +1256,6 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
     Sort hierarchy according to rules:
     - If include_metrics = True: sort by avg_citations (descending), then by name alphabetically
     - If include_metrics = False: sort by articles count (descending), then by name alphabetically
-    - Articles within each topic are always sorted by citations_per_year (descending)
     
     Returns sorted hierarchy as OrderedDict
     """
@@ -1354,8 +1344,6 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
                     )
                 
                 for topic in topics_sorted:
-                    # Articles within each topic are already sorted by citations_per_year
-                    # But we need to ensure they stay sorted
                     sorted_topics[topic] = topics[topic]
                 
                 sorted_subfields[subfield] = sorted_topics
@@ -1422,6 +1410,2034 @@ def format_message_with_variables(message: str, journal_name: str, years_str: st
     message = message.replace('JOURNAL_NAME', journal_name)
     message = message.replace('YEARS', years_str)
     return message
+
+# ============================================================================
+# NEW: HOT TOPICS ANALYZER
+# ============================================================================
+
+class HotTopicsAnalyzer:
+    """
+    Analyzes topic dynamics and calculates "hotness" metrics
+    """
+    
+    def __init__(self, articles: List[dict]):
+        self.articles = articles
+        self.current_year = datetime.now().year
+        self.articles_by_year = self._group_by_year(articles)
+        
+    def _group_by_year(self, articles: List[dict]) -> Dict[int, List[dict]]:
+        """Groups articles by publication year"""
+        by_year = defaultdict(list)
+        for article in articles:
+            year = article.get('publication_year', 0)
+            if year > 0:
+                by_year[year].append(article)
+        return dict(by_year)
+    
+    def _get_yearly_counts(self, topic_articles: List[dict]) -> Dict[int, int]:
+        """Gets number of articles per year for a topic"""
+        counts = defaultdict(int)
+        for article in topic_articles:
+            year = article.get('publication_year', 0)
+            if year > 0:
+                counts[year] += 1
+        return dict(counts)
+    
+    def _get_citations_by_year(self, topic_articles: List[dict]) -> Dict[int, int]:
+        """Gets citations per year for a topic"""
+        citations = defaultdict(int)
+        for article in topic_articles:
+            year = article.get('publication_year', 0)
+            if year > 0:
+                citations[year] += article.get('cited_by_count', 0)
+        return dict(citations)
+    
+    def _calculate_cagr(self, yearly_counts: Dict[int, int], years: int = 3) -> float:
+        """Compound Annual Growth Rate"""
+        if len(yearly_counts) < 2:
+            return 0
+        
+        recent_years = sorted(yearly_counts.keys())[-years:]
+        if len(recent_years) < 2:
+            return 0
+            
+        start_count = yearly_counts.get(recent_years[0], 0)
+        end_count = yearly_counts.get(recent_years[-1], 0)
+        
+        if start_count == 0:
+            return 100 if end_count > 0 else 0
+            
+        years_diff = recent_years[-1] - recent_years[0]
+        if years_diff == 0:
+            return 0
+            
+        cagr = (end_count / start_count) ** (1 / years_diff) - 1
+        return cagr * 100
+    
+    def _calculate_acceleration(self, citations_by_year: Dict[int, int]) -> float:
+        """Acceleration of citation growth (second derivative)"""
+        years = sorted(citations_by_year.keys())
+        if len(years) < 3:
+            return 0
+            
+        # Calculate first derivative (velocity)
+        velocities = []
+        for i in range(1, len(years)):
+            dt = years[i] - years[i-1]
+            if dt > 0:
+                v = (citations_by_year.get(years[i], 0) - citations_by_year.get(years[i-1], 0)) / dt
+                velocities.append(v)
+        
+        if len(velocities) < 2:
+            return 0
+            
+        # Calculate acceleration (derivative of velocity)
+        accelerations = []
+        for i in range(1, len(velocities)):
+            a = velocities[i] - velocities[i-1]
+            accelerations.append(a)
+        
+        return sum(accelerations) / len(accelerations) if accelerations else 0
+    
+    def _calculate_avg_age(self, topic_articles: List[dict]) -> float:
+        """Calculates average age of articles in topic"""
+        ages = []
+        for article in topic_articles:
+            year = article.get('publication_year', 0)
+            if year > 0:
+                ages.append(self.current_year - year)
+        return sum(ages) / len(ages) if ages else 0
+    
+    def _calculate_growth_rate(self, citations_by_year: Dict[int, int]) -> float:
+        """Calculates growth rate of citations"""
+        years = sorted(citations_by_year.keys())
+        if len(years) < 2:
+            return 0
+        
+        first_year = years[0]
+        last_year = years[-1]
+        first_value = citations_by_year.get(first_year, 0)
+        last_value = citations_by_year.get(last_year, 0)
+        
+        if first_value == 0:
+            return 100 if last_value > 0 else 0
+        
+        years_diff = last_year - first_year
+        if years_diff == 0:
+            return 0
+        
+        growth = (last_value / first_value) ** (1 / years_diff) - 1
+        return growth * 100
+    
+    def _calculate_novelty_score(self, topic_articles: List[dict]) -> float:
+        """Calculates novelty score based on title keywords"""
+        novelty_keywords = ['novel', 'new', 'first', 'emerging', 'innovative', 
+                           'discovery', 'breakthrough', 'unprecedented', 'next-generation']
+        
+        scores = []
+        for article in topic_articles:
+            title = article.get('title', '').lower()
+            score = sum(1 for kw in novelty_keywords if kw in title)
+            scores.append(min(1, score / 3))
+        
+        return sum(scores) / len(scores) if scores else 0
+    
+    def _estimate_world_average(self, topic_articles: List[dict]) -> float:
+        """Estimates world average citations for similar topics"""
+        # In production, this would query OpenAlex for world averages
+        # For now, use a heuristic based on citation distribution
+        citations = [a.get('cited_by_count', 0) for a in topic_articles]
+        if not citations:
+            return 1
+        
+        # Estimate world average as 1.5x the median (typical in many fields)
+        median = np.median(citations)
+        return max(1, median * 0.7)
+    
+    def calculate_metrics(self, topic_articles: List[dict]) -> Dict:
+        """
+        Calculates comprehensive metrics for a topic
+        """
+        if not topic_articles:
+            return {
+                'cagr': 0,
+                'acceleration': 0,
+                'ets': 0,
+                'rcr': 0,
+                'h_index': 0,
+                'momentum': 0,
+                'hot_zone': '💤 DORMANT',
+                'trend': 'stable',
+                'growth_stage': 'unknown',
+                'citation_velocity': 0
+            }
+        
+        yearly_counts = self._get_yearly_counts(topic_articles)
+        citations_by_year = self._get_citations_by_year(topic_articles)
+        
+        # 1. CAGR
+        cagr = self._calculate_cagr(yearly_counts)
+        
+        # 2. Acceleration
+        acceleration = self._calculate_acceleration(citations_by_year)
+        
+        # 3. Emerging Topic Score (ETS)
+        avg_age = self._calculate_avg_age(topic_articles)
+        age_score = max(0, 100 - (avg_age * 5))
+        
+        growth_score = min(100, cagr * 2) if cagr > 0 else 0
+        
+        citation_growth = self._calculate_growth_rate(citations_by_year)
+        citation_score = min(100, citation_growth * 3) if citation_growth > 0 else 0
+        
+        density_score = min(100, len(topic_articles) * 2)
+        
+        novelty_score = self._calculate_novelty_score(topic_articles) * 100
+        
+        weights = {
+            'age': 0.25,
+            'growth': 0.30,
+            'citations': 0.25,
+            'density': 0.10,
+            'novelty': 0.10
+        }
+        
+        ets = (age_score * weights['age'] +
+               growth_score * weights['growth'] +
+               citation_score * weights['citations'] +
+               density_score * weights['density'] +
+               novelty_score * weights['novelty'])
+        ets = min(100, ets)
+        
+        # 4. Relative Citation Ratio (RCR)
+        avg_citations = sum(a.get('cited_by_count', 0) for a in topic_articles) / len(topic_articles)
+        world_avg = self._estimate_world_average(topic_articles)
+        rcr = avg_citations / world_avg if world_avg > 0 else 0
+        
+        # 5. H-index
+        citations = sorted([a.get('cited_by_count', 0) for a in topic_articles], reverse=True)
+        h_index = 0
+        for i, c in enumerate(citations, 1):
+            if c >= i:
+                h_index = i
+            else:
+                break
+        
+        # 6. Momentum (trend indicator)
+        if len(yearly_counts) >= 2:
+            years = sorted(yearly_counts.keys())
+            counts = [yearly_counts[y] for y in years]
+            if len(counts) >= 3:
+                # Simple slope calculation
+                x = np.array(range(len(counts)))
+                y = np.array(counts)
+                slope = np.polyfit(x, y, 1)[0]
+                momentum = np.tanh(slope / 10)  # Normalize to [-1, 1]
+            else:
+                momentum = 0
+        else:
+            momentum = 0
+        
+        # 7. Citation velocity
+        if len(citations_by_year) >= 2:
+            years = sorted(citations_by_year.keys())
+            values = [citations_by_year[y] for y in years]
+            velocity = (values[-1] - values[0]) / (years[-1] - years[0]) if years[-1] != years[0] else 0
+        else:
+            velocity = 0
+        
+        # 8. Hot Zone Classification
+        if ets > 70 and cagr > 20 and momentum > 0.5:
+            hot_zone = '🔥 EMERGING STAR'
+        elif ets > 60 and cagr > 10 and rcr > 1.5:
+            hot_zone = '📈 GROWING POWER'
+        elif ets > 50 and rcr > 1.2:
+            hot_zone = '⚡ ESTABLISHED HOT'
+        elif ets > 40 and momentum > 0:
+            hot_zone = '🌱 PROMISING'
+        elif momentum < -0.3 and ets < 40:
+            hot_zone = '📉 DECLINING'
+        else:
+            hot_zone = '💤 DORMANT'
+        
+        # 9. Trend prediction
+        if cagr > 15:
+            trend = 'up'
+        elif cagr < -10:
+            trend = 'down'
+        else:
+            trend = 'stable'
+        
+        # 10. Growth stage
+        if len(yearly_counts) < 3:
+            growth_stage = 'emerging'
+        elif cagr > 10:
+            growth_stage = 'growing'
+        elif cagr > -5:
+            growth_stage = 'mature'
+        else:
+            growth_stage = 'declining'
+        
+        return {
+            'cagr': cagr,
+            'acceleration': acceleration,
+            'ets': ets,
+            'rcr': rcr,
+            'h_index': h_index,
+            'momentum': momentum,
+            'citation_velocity': velocity,
+            'hot_zone': hot_zone,
+            'trend': trend,
+            'growth_stage': growth_stage,
+            'avg_age': avg_age,
+            'total_articles': len(topic_articles),
+            'total_citations': sum(a.get('cited_by_count', 0) for a in topic_articles),
+            'avg_citations': avg_citations
+        }
+    
+    def calculate_metrics_for_all_topics(self, hierarchy: Dict) -> List[Dict]:
+        """Calculates metrics for all topics in hierarchy"""
+        all_metrics = []
+        
+        for domain, fields in hierarchy.items():
+            for field, subfields in fields.items():
+                for subfield, topics in subfields.items():
+                    for topic, articles in topics.items():
+                        metrics = self.calculate_metrics(articles)
+                        all_metrics.append({
+                            'domain': domain,
+                            'field': field,
+                            'subfield': subfield,
+                            'topic': topic,
+                            'articles': len(articles),
+                            **metrics
+                        })
+        
+        return sorted(all_metrics, key=lambda x: x['ets'], reverse=True)
+
+# ============================================================================
+# NEW: CITATION DYNAMICS ANALYZER
+# ============================================================================
+
+class CitationDynamicsAnalyzer:
+    """
+    Analyzes citation dynamics of individual articles over time
+    """
+    
+    def __init__(self, articles: List[dict]):
+        self.articles = articles
+        self.current_year = datetime.now().year
+    
+    def _get_citation_history(self, article: dict) -> Dict[int, int]:
+        """Simulates citation history based on available data"""
+        # In production, this would query OpenAlex for yearly citation counts
+        # For now, we create a realistic distribution
+        
+        total_citations = article.get('cited_by_count', 0)
+        pub_year = article.get('publication_year', 0)
+        
+        if total_citations == 0 or pub_year == 0:
+            return {}
+        
+        # Create realistic distribution: peak around 2-4 years after publication
+        history = {}
+        age = self.current_year - pub_year
+        
+        # Use a log-normal-like distribution
+        import math
+        for year in range(pub_year, min(pub_year + age + 1, self.current_year + 1)):
+            year_age = year - pub_year
+            if year_age == 0:
+                # First year gets 10-20% of total
+                ratio = 0.15 + np.random.random() * 0.05
+            elif year_age <= 3:
+                # Peak years
+                ratio = (0.20 + 0.10 * np.sin((year_age - 1) * np.pi / 4)) * (1 + np.random.random() * 0.1)
+            elif year_age <= 7:
+                # Gradual decline
+                ratio = (0.15 - 0.02 * (year_age - 3)) * (1 + np.random.random() * 0.1)
+            else:
+                # Long tail
+                ratio = (0.05 * math.exp(-0.3 * (year_age - 7))) * (1 + np.random.random() * 0.1)
+            
+            citations_this_year = int(total_citations * ratio)
+            if citations_this_year > 0:
+                history[year] = citations_this_year
+        
+        # Normalize to ensure total matches
+        total_simulated = sum(history.values())
+        if total_simulated > 0:
+            scale = total_citations / total_simulated
+            for year in history:
+                history[year] = int(history[year] * scale)
+        
+        return history
+    
+    def _calculate_velocity(self, history: Dict[int, int]) -> float:
+        """Calculates citation velocity (rate of change)"""
+        if len(history) < 2:
+            return 0
+        
+        years = sorted(history.keys())
+        values = [history[y] for y in years]
+        total_change = values[-1] - values[0]
+        time_span = years[-1] - years[0]
+        
+        return total_change / time_span if time_span > 0 else 0
+    
+    def _calculate_acceleration_dynamics(self, history: Dict[int, int]) -> float:
+        """Calculates citation acceleration"""
+        if len(history) < 3:
+            return 0
+        
+        years = sorted(history.keys())
+        values = [history[y] for y in years]
+        
+        # Calculate slopes between consecutive years
+        slopes = []
+        for i in range(1, len(years)):
+            slope = (values[i] - values[i-1]) / (years[i] - years[i-1])
+            slopes.append(slope)
+        
+        # Calculate acceleration
+        accelerations = []
+        for i in range(1, len(slopes)):
+            accel = slopes[i] - slopes[i-1]
+            accelerations.append(accel)
+        
+        return sum(accelerations) / len(accelerations) if accelerations else 0
+    
+    def _is_sleeping_beauty(self, history: Dict[int, int]) -> bool:
+        """Checks if article is a "Sleeping Beauty" - long dormancy then sudden awakening"""
+        if len(history) < 5:
+            return False
+        
+        years = sorted(history.keys())
+        citations = [history[y] for y in years]
+        
+        # Find dormancy period (at least 3 years with very few citations)
+        for i in range(len(citations) - 3):
+            window = citations[i:i+3]
+            if sum(window) < 3:  # Almost no citations
+                # Check if there's a later surge
+                if sum(citations[i+3:]) > 10:
+                    return True
+        
+        return False
+    
+    def analyze_article(self, article: dict) -> Dict:
+        """
+        Comprehensive analysis of article citation dynamics
+        """
+        history = self._get_citation_history(article)
+        
+        if not history:
+            return {
+                'category': '📄 UNCITED',
+                'patterns': {'description': 'No citations'},
+                'citation_history': {},
+                'recommendation': 'Article has no citations',
+                'awakening_score': 0,
+                'dormancy_period': 0,
+                'revival_chance': 0
+            }
+        
+        years = sorted(history.keys())
+        citation_values = [history[y] for y in years]
+        
+        # Calculate slope for trend
+        if len(years) >= 3:
+            x = np.array(range(len(citation_values)))
+            y = np.array(citation_values)
+            slope = np.polyfit(x, y, 1)[0]
+        else:
+            slope = 0
+        
+        # Determine pattern
+        recent_citations = [history[y] for y in years[-3:]] if len(years) >= 3 else citation_values
+        total_citations = article.get('cited_by_count', 0)
+        age = self.current_year - article.get('publication_year', self.current_year)
+        
+        if slope > 0.5:
+            pattern = 'increasing'
+            description = '📈 Increasing'
+        elif slope < -0.5:
+            pattern = 'decreasing'
+            description = '📉 Decreasing'
+        elif len(years) > 0 and sum(recent_citations) == 0:
+            pattern = 'dormant'
+            description = '💤 Dormant'
+        elif len(years) > 0 and sum(recent_citations) > 0 and sum(citation_values[:-3]) == 0:
+            pattern = 'awakening'
+            description = '🌅 Awakening'
+        elif len(years) > 0 and sum(recent_citations) > sum(citation_values[:-3]):
+            pattern = 'accelerating'
+            description = '⚡ Accelerating'
+        else:
+            pattern = 'stable'
+            description = '➖ Stable'
+        
+        # Classify article
+        if age <= 3 and slope > 1.0 and total_citations > 5:
+            category = '🌟 RISING STAR'
+        elif age > 5 and pattern == 'stable' and total_citations > 20:
+            category = '🏛️ CLASSIC'
+        elif age > 3 and pattern == 'dormant':
+            category = '💤 DORMANT'
+        elif pattern == 'awakening' and slope > 0.5:
+            category = '🌅 AWAKENING'
+        elif age <= 2 and total_citations > age * 10:
+            category = '🔥 HOT PAPER'
+        elif total_citations > 50 and age > 3:
+            category = '💎 HIGH IMPACT'
+        elif self._is_sleeping_beauty(history):
+            category = '👸 SLEEPING BEAUTY'
+        elif total_citations > 0:
+            category = '📄 REGULAR'
+        else:
+            category = '📄 UNCITED'
+        
+        # Calculate awakening score
+        if len(years) >= 3:
+            last_years = years[-3:]
+            last_citations = [history[y] for y in last_years]
+            previous_years = years[:-3]
+            previous_citations = [history[y] for y in previous_years] if previous_years else [0]
+            
+            if sum(previous_citations) > 0:
+                ratio = sum(last_citations) / sum(previous_citations) if sum(previous_citations) > 0 else 0
+                awakening_score = min(100, ratio * 50)
+            else:
+                if sum(last_citations) > 0:
+                    awakening_score = min(100, sum(last_citations) * 20)
+                else:
+                    awakening_score = 0
+        else:
+            awakening_score = 0
+        
+        # Estimate revival chance
+        revival_chance = 0
+        factors = []
+        
+        if 3 <= age <= 10:
+            factors.append(0.3)
+        elif age > 10:
+            factors.append(0.1)
+        else:
+            factors.append(0.0)
+        
+        topic = article.get('primary_topic', '')
+        if any(word in topic.lower() for word in ['machine learning', 'ai', 'climate', 'covid', 'quantum']):
+            factors.append(0.3)
+        
+        recent_citations_sum = sum([history[y] for y in list(history.keys())[-3:]])
+        if recent_citations_sum > 0:
+            factors.append(min(0.4, recent_citations_sum * 0.1))
+        
+        if history and max(history.values()) > 5:
+            factors.append(0.2)
+        
+        revival_chance = sum(factors) if factors else 0
+        
+        # Dormancy period
+        dormancy_period = 0
+        if pattern == 'dormant' or pattern == 'awakening':
+            # Find longest period with <1 citation per year
+            max_dormancy = 0
+            current_dormancy = 0
+            for year in range(min(years), max(years) + 1):
+                if history.get(year, 0) < 1:
+                    current_dormancy += 1
+                else:
+                    if current_dormancy > max_dormancy:
+                        max_dormancy = current_dormancy
+                    current_dormancy = 0
+            dormancy_period = max_dormancy
+        
+        return {
+            'category': category,
+            'patterns': {
+                'pattern': pattern,
+                'description': description,
+                'slope': slope,
+                'velocity': self._calculate_velocity(history),
+                'acceleration': self._calculate_acceleration_dynamics(history),
+                'max_citation_year': max(history, key=history.get) if history else None,
+                'citation_peak': max(history.values()) if history else 0
+            },
+            'citation_history': history,
+            'recommendation': self._get_recommendation(category, article),
+            'awakening_score': awakening_score,
+            'dormancy_period': dormancy_period,
+            'revival_chance': revival_chance
+        }
+    
+    def _get_recommendation(self, category: str, article: dict) -> str:
+        """Generates recommendation based on article category"""
+        recommendations = {
+            '🌟 RISING STAR': 'This article is gaining rapid attention. Consider highlighting it in editorials and social media.',
+            '🏛️ CLASSIC': 'This is a foundational paper. Ensure it is properly indexed and cited in relevant reviews.',
+            '💤 DORMANT': 'This article may benefit from targeted promotion. Consider writing a commentary or press release.',
+            '🌅 AWAKENING': 'This article is experiencing renewed interest. Investigate what triggered the awakening.',
+            '🔥 HOT PAPER': 'This paper is performing exceptionally well. Feature it prominently.',
+            '💎 HIGH IMPACT': 'This is a high-impact paper. Consider inviting the authors for a review or perspective.',
+            '👸 SLEEPING BEAUTY': 'This paper has rare potential. Consider retrospective analysis and promotion.',
+            '📄 REGULAR': 'Continue monitoring citation trends.',
+            '📄 UNCITED': 'Consider outreach to authors for promotion or identify if indexing issues exist.'
+        }
+        return recommendations.get(category, 'Monitor citation trends.')
+    
+    def analyze_all_articles(self) -> List[Dict]:
+        """Analyzes all articles and returns results"""
+        results = []
+        for article in self.articles:
+            analysis = self.analyze_article(article)
+            results.append({
+                'title': article.get('title', 'No title'),
+                'doi': article.get('doi', ''),
+                'publication_year': article.get('publication_year', 0),
+                'total_citations': article.get('cited_by_count', 0),
+                'citations_per_year': article.get('citations_per_year', 0),
+                **analysis
+            })
+        return results
+    
+    def get_categories_summary(self, results: List[Dict]) -> Dict:
+        """Summarizes article categories"""
+        summary = defaultdict(list)
+        for result in results:
+            category = result['category']
+            summary[category].append(result)
+        return dict(summary)
+
+# ============================================================================
+# NEW: AUTHOR ANALYZER
+# ============================================================================
+
+class AuthorAnalyzer:
+    """
+    Comprehensive analysis of journal authors
+    """
+    
+    def __init__(self, articles: List[dict]):
+        self.articles = articles
+        self._build_author_profiles()
+    
+    def _build_author_profiles(self):
+        """Builds profiles for all authors"""
+        self.author_profiles = defaultdict(lambda: {
+            'articles': [],
+            'citations': 0,
+            'publication_years': [],
+            'collaborators': set(),
+            'topics': defaultdict(int),
+            'first_author': 0,
+            'corresponding_author': 0,
+            'affiliations': set()
+        })
+        
+        for article in self.articles:
+            authors = article.get('authors_list', [])
+            if not authors:
+                continue
+                
+            for idx, author in enumerate(authors):
+                profile = self.author_profiles[author]
+                profile['articles'].append(article)
+                profile['citations'] += article.get('cited_by_count', 0)
+                profile['publication_years'].append(article.get('publication_year', 0))
+                
+                if idx == 0:
+                    profile['first_author'] += 1
+                if idx == len(authors) - 1:
+                    profile['corresponding_author'] += 1
+                
+                collaborators = [a for a in authors if a != author]
+                profile['collaborators'].update(collaborators)
+                
+                topic = article.get('primary_topic', 'Unknown')
+                profile['topics'][topic] += 1
+                
+                # Extract affiliation if available
+                if 'authorships' in article and idx < len(article['authorships']):
+                    aff = article['authorships'][idx].get('institution', {}).get('display_name', '')
+                    if aff:
+                        profile['affiliations'].add(aff)
+    
+    def _calculate_h_index(self, articles: List[dict]) -> int:
+        """Calculates H-index for an author"""
+        citations = sorted([a.get('cited_by_count', 0) for a in articles], reverse=True)
+        h_index = 0
+        for i, c in enumerate(citations, 1):
+            if c >= i:
+                h_index = i
+            else:
+                break
+        return h_index
+    
+    def _calculate_recent_activity(self, profile: dict) -> Dict:
+        """Analyzes activity in last 3 years"""
+        current_year = datetime.now().year
+        recent_years = [current_year - i for i in range(3)]
+        
+        recent_articles = [a for a in profile['articles'] 
+                         if a.get('publication_year', 0) in recent_years]
+        
+        return {
+            'articles_last_3_years': len(recent_articles),
+            'citations_last_3_years': sum(a.get('cited_by_count', 0) for a in recent_articles),
+            'is_active': len(recent_articles) > 0
+        }
+    
+    def _determine_career_stage(self, profile: dict) -> str:
+        """Determines career stage of author"""
+        years = sorted(profile['publication_years'])
+        if not years:
+            return '🌱 Early Career'
+        
+        career_length = years[-1] - years[0]
+        articles_count = len(profile['articles'])
+        
+        if career_length < 3 and articles_count < 5:
+            return '🌱 Early Career'
+        elif career_length < 7 and articles_count < 15:
+            return '🌿 Mid Career'
+        elif articles_count > 20 and career_length > 10:
+            return '🏛️ Established Researcher'
+        else:
+            return '🌳 Senior Researcher'
+    
+    def _calculate_productivity_trend(self, profile: dict) -> float:
+        """Calculates productivity trend (articles per year)"""
+        years = sorted(profile['publication_years'])
+        if len(years) < 3:
+            return 0
+        
+        # Group by year
+        yearly_counts = defaultdict(int)
+        for year in years:
+            if year > 0:
+                yearly_counts[year] += 1
+        
+        years_sorted = sorted(yearly_counts.keys())
+        counts = [yearly_counts[y] for y in years_sorted]
+        
+        if len(counts) >= 3:
+            x = np.array(range(len(counts)))
+            y = np.array(counts)
+            slope = np.polyfit(x, y, 1)[0]
+            return slope
+        return 0
+    
+    def _calculate_productivity_score(self, profile: dict) -> float:
+        """Calculates overall productivity score"""
+        years = sorted(profile['publication_years'])
+        if not years:
+            return 0
+        
+        total_articles = len(profile['articles'])
+        career_length = years[-1] - years[0] + 1 if years else 1
+        
+        articles_per_year = total_articles / career_length if career_length > 0 else 0
+        citations_per_article = profile['citations'] / total_articles if total_articles > 0 else 0
+        
+        # Combined score
+        score = (articles_per_year * 3) + (citations_per_article * 0.5) + (profile['h_index'] * 0.3)
+        return min(100, score)
+    
+    def analyze(self) -> Dict:
+        """
+        Comprehensive analysis of all authors
+        """
+        results = {}
+        
+        for author, profile in self.author_profiles.items():
+            articles = profile['articles']
+            
+            if not articles:
+                continue
+            
+            h_index = self._calculate_h_index(articles)
+            avg_citations = profile['citations'] / len(articles) if articles else 0
+            recent_activity = self._calculate_recent_activity(profile)
+            topic_diversity = len(profile['topics'])
+            collaboration_score = len(profile['collaborators']) / len(articles) if articles else 0
+            productivity_trend = self._calculate_productivity_trend(profile)
+            
+            results[author] = {
+                'articles': len(articles),
+                'total_citations': profile['citations'],
+                'avg_citations': avg_citations,
+                'h_index': h_index,
+                'first_author_count': profile['first_author'],
+                'corresponding_author_count': profile['corresponding_author'],
+                'collaborators': list(profile['collaborators']),
+                'num_collaborators': len(profile['collaborators']),
+                'collaboration_score': collaboration_score,
+                'topic_diversity': topic_diversity,
+                'main_topics': sorted(profile['topics'].items(), 
+                                     key=lambda x: x[1], reverse=True)[:5],
+                'recent_activity': recent_activity,
+                'productivity_trend': productivity_trend,
+                'publication_years': sorted(profile['publication_years']),
+                'career_stage': self._determine_career_stage(profile),
+                'productivity_score': self._calculate_productivity_score(profile),
+                'affiliations': list(profile['affiliations']),
+                'active': recent_activity['is_active']
+            }
+        
+        return results
+    
+    def get_top_authors(self, n: int = 10, metric: str = 'total_citations') -> List[Dict]:
+        """Returns top N authors by specified metric"""
+        analysis = self.analyze()
+        
+        sorted_authors = sorted(analysis.items(), 
+                              key=lambda x: x[1].get(metric, 0), reverse=True)
+        
+        return [{'name': name, **metrics} for name, metrics in sorted_authors[:n]]
+    
+    def get_authors_by_topic(self, topic: str) -> List[Dict]:
+        """Returns authors specializing in a topic"""
+        analysis = self.analyze()
+        
+        result = []
+        for author, metrics in analysis.items():
+            if any(t == topic for t, _ in metrics['main_topics']):
+                result.append({'name': author, **metrics})
+        
+        return sorted(result, key=lambda x: x['articles'], reverse=True)
+    
+    def get_collaboration_network(self, top_n: int = 20) -> Dict:
+        """Returns collaboration network data"""
+        analysis = self.analyze()
+        
+        network = {
+            'nodes': [],
+            'edges': []
+        }
+        
+        # Take top N authors by articles
+        top_authors = self.get_top_authors(top_n, 'articles')
+        author_names = [a['name'] for a in top_authors]
+        
+        for author in author_names:
+            profile = self.author_profiles.get(author, {})
+            collaborators = profile.get('collaborators', set())
+            
+            for collab in collaborators:
+                if collab in author_names:
+                    network['edges'].append({
+                        'source': author,
+                        'target': collab,
+                        'weight': 1  # Simple edge weight
+                    })
+        
+        # Add nodes with metrics
+        for author in top_authors:
+            network['nodes'].append({
+                'id': author['name'],
+                'articles': author['articles'],
+                'citations': author['total_citations'],
+                'h_index': author['h_index']
+            })
+        
+        return network
+
+# ============================================================================
+# NEW: CITATION PREDICTOR
+# ============================================================================
+
+class CitationPredictor:
+    """
+    Predicts citation potential of articles based on characteristics
+    """
+    
+    def __init__(self, training_data: List[dict]):
+        self.training_data = training_data
+        self.feature_weights = self._calculate_feature_weights()
+        self._cache_features = {}
+    
+    def _calculate_feature_weights(self) -> Dict:
+        """
+        Calculates feature weights based on historical data
+        """
+        features = []
+        labels = []
+        
+        for article in self.training_data:
+            feat = self._extract_features(article)
+            features.append(feat)
+            labels.append(article.get('cited_by_count', 0))
+        
+        if not features:
+            return {name: 0.1 for name in self._get_feature_names()}
+        
+        feature_names = list(features[0].keys())
+        weights = {name: 0 for name in feature_names}
+        
+        for name in feature_names:
+            values = [f.get(name, 0) for f in features]
+            
+            # Remove zeros for correlation calculation
+            filtered = [(v, l) for v, l in zip(values, labels) if v != 0]
+            if len(filtered) > 1:
+                v_filtered = [f[0] for f in filtered]
+                l_filtered = [f[1] for f in filtered]
+                correlation = np.corrcoef(v_filtered, l_filtered)[0, 1] if len(v_filtered) > 1 else 0
+                weights[name] = max(0, correlation)
+            else:
+                weights[name] = 0
+        
+        # Normalize weights
+        total = sum(weights.values())
+        if total > 0:
+            for name in weights:
+                weights[name] /= total
+        else:
+            # If all weights are zero, assign equal weights
+            for name in weights:
+                weights[name] = 1.0 / len(weights)
+        
+        return weights
+    
+    def _get_feature_names(self) -> List[str]:
+        """Returns list of feature names"""
+        return [
+            'title_length', 'title_word_count', 'num_authors',
+            'has_international_authors', 'topic_popularity', 'topic_emerging_score',
+            'journal_citation_rate', 'journal_impact_factor', 'publication_year',
+            'is_recent', 'has_doi', 'is_oa', 'title_has_question', 'title_has_colon',
+            'novelty_score', 'impact_words'
+        ]
+    
+    def _extract_features(self, article: dict) -> Dict:
+        """Extracts features for prediction model"""
+        features = {}
+        
+        # Cache by DOI to avoid recalculation
+        doi = article.get('doi', '')
+        if doi in self._cache_features:
+            return self._cache_features[doi]
+        
+        # 1. Structural features
+        title = article.get('title', '')
+        features['title_length'] = len(title)
+        features['title_word_count'] = len(title.split())
+        
+        # 2. Author features
+        authors = article.get('authors_list', [])
+        features['num_authors'] = len(authors)
+        features['has_international_authors'] = 1 if self._has_international_authors(article) else 0
+        
+        # 3. Topic features
+        topic = article.get('primary_topic', '')
+        features['topic_popularity'] = self._get_topic_popularity(topic)
+        features['topic_emerging_score'] = self._get_topic_emerging_score(topic)
+        
+        # 4. Journal features
+        features['journal_citation_rate'] = self._get_journal_citation_rate(article)
+        features['journal_impact_factor'] = self._get_journal_impact_factor(article)
+        
+        # 5. Temporal features
+        year = article.get('publication_year', 0)
+        features['publication_year'] = year
+        features['is_recent'] = 1 if (datetime.now().year - year) <= 3 else 0
+        
+        # 6. Format features
+        features['has_doi'] = 1 if article.get('doi') else 0
+        features['is_oa'] = 1 if article.get('is_oa') else 0
+        
+        # 7. Content features
+        features['title_has_question'] = 1 if '?' in title else 0
+        features['title_has_colon'] = 1 if ':' in title else 0
+        
+        # 8. Semantic features
+        features['novelty_score'] = self._calculate_novelty_score_article(article)
+        features['impact_words'] = self._count_impact_words(title)
+        
+        # Cache features
+        if doi:
+            self._cache_features[doi] = features
+        
+        return features
+    
+    def _has_international_authors(self, article: dict) -> bool:
+        """Checks if article has international collaboration"""
+        # In production, check affiliations from different countries
+        # For now, use heuristic: multiple authors from different parts of name
+        authors = article.get('authors_list', [])
+        if len(authors) < 2:
+            return False
+        
+        # Simple heuristic: check for name diversity
+        name_styles = set()
+        for author in authors:
+            if re.search(r'[a-z]', author) and re.search(r'[A-Z]', author):
+                name_styles.add('western')
+            elif re.search(r'[а-яА-Я]', author):
+                name_styles.add('cyrillic')
+            else:
+                name_styles.add('other')
+        
+        return len(name_styles) >= 2
+    
+    def _get_topic_popularity(self, topic: str) -> float:
+        """Gets popularity score for a topic"""
+        if not topic:
+            return 0.5
+        
+        # Count articles with this topic in training data
+        count = sum(1 for a in self.training_data 
+                   if a.get('primary_topic', '') == topic)
+        
+        # Normalize: max 50 articles for full score
+        return min(1, count / 50)
+    
+    def _get_topic_emerging_score(self, topic: str) -> float:
+        """Gets emerging score for a topic"""
+        if not topic:
+            return 0.3
+        
+        # Check if topic contains emerging keywords
+        emerging_keywords = ['emerging', 'novel', 'future', 'next-generation', 
+                           'advanced', 'breakthrough', 'paradigm']
+        
+        score = 0
+        for kw in emerging_keywords:
+            if kw in topic.lower():
+                score += 0.2
+        
+        return min(1, score)
+    
+    def _get_journal_citation_rate(self, article: dict) -> float:
+        """Gets journal citation rate"""
+        journal_name = article.get('journal_name', '')
+        if not journal_name:
+            return 0.5
+        
+        # Calculate average citations per article for this journal
+        journal_articles = [a for a in self.training_data 
+                           if a.get('journal_name', '') == journal_name]
+        
+        if not journal_articles:
+            return 0.5
+        
+        avg = sum(a.get('cited_by_count', 0) for a in journal_articles) / len(journal_articles)
+        return min(1, avg / 20)  # Normalize: 20 citations = 1.0
+    
+    def _get_journal_impact_factor(self, article: dict) -> float:
+        """Gets journal impact factor (simplified)"""
+        journal_name = article.get('journal_name', '')
+        if not journal_name:
+            return 0.5
+        
+        # Simplified IF calculation
+        current_year = datetime.now().year
+        citations_to_journal = sum(
+            a.get('cited_by_count', 0) for a in self.training_data
+            if a.get('journal_name', '') == journal_name
+            and current_year - a.get('publication_year', 0) <= 2
+        )
+        
+        articles_in_journal = len([a for a in self.training_data 
+                                  if a.get('journal_name', '') == journal_name
+                                  and current_year - a.get('publication_year', 0) <= 2])
+        
+        if articles_in_journal == 0:
+            return 0.5
+        
+        if = citations_to_journal / articles_in_journal
+        return min(1, if / 5)  # Normalize: IF 5 = 1.0
+    
+    def _calculate_novelty_score_article(self, article: dict) -> float:
+        """Calculates novelty score for an article"""
+        title = article.get('title', '').lower()
+        
+        novelty_keywords = ['novel', 'new', 'first', 'emerging', 'innovative',
+                           'discovery', 'breakthrough', 'unprecedented']
+        
+        score = sum(1 for kw in novelty_keywords if kw in title)
+        return min(1, score / 3)
+    
+    def _count_impact_words(self, title: str) -> int:
+        """Counts impact words in title"""
+        impact_words = ['significant', 'important', 'critical', 'essential',
+                       'key', 'fundamental', 'major', 'novel', 'unique']
+        
+        title_lower = title.lower()
+        return sum(1 for word in impact_words if word in title_lower)
+    
+    def predict_citation_potential(self, article: dict) -> Dict:
+        """
+        Predicts citation potential of an article
+        """
+        features = self._extract_features(article)
+        
+        # Calculate weighted score
+        score = 0
+        feature_importance = []
+        
+        for name, weight in self.feature_weights.items():
+            value = features.get(name, 0)
+            contribution = value * weight
+            score += contribution
+            feature_importance.append({
+                'feature': name,
+                'value': value,
+                'weight': weight,
+                'contribution': contribution
+            })
+        
+        # Normalize score to 0-100
+        score = min(100, score * 20)
+        
+        # Determine category
+        if score > 80:
+            category = '🌟 High Impact Potential'
+        elif score > 60:
+            category = '📈 Good Potential'
+        elif score > 40:
+            category = '📊 Moderate Potential'
+        else:
+            category = '💤 Needs Promotion'
+        
+        # Generate recommendations
+        recommendations = self._generate_recommendations(features, score)
+        
+        # Estimate citations
+        estimated_citations = int(score * 0.3 + 2)  # Simple estimation
+        
+        # Calculate confidence
+        confidence = self._calculate_confidence(features)
+        
+        return {
+            'score': score,
+            'category': category,
+            'feature_importance': sorted(feature_importance, 
+                                        key=lambda x: x['contribution'], reverse=True)[:5],
+            'recommendations': recommendations,
+            'predicted_citations': estimated_citations,
+            'confidence': confidence
+        }
+    
+    def _generate_recommendations(self, features: Dict, score: float) -> List[str]:
+        """Generates recommendations for improving citations"""
+        recommendations = []
+        
+        # Title analysis
+        if features.get('title_length', 0) > 15:
+            recommendations.append("📝 Title is too long - consider shorter, more impactful title")
+        elif features.get('title_length', 0) < 5:
+            recommendations.append("📝 Title is too short - add keywords for better discoverability")
+        
+        # Author analysis
+        if features.get('num_authors', 0) < 3:
+            recommendations.append("👥 Consider expanding author team, especially with international collaborators")
+        
+        # Topic analysis
+        if features.get('topic_emerging_score', 0) < 0.3:
+            recommendations.append("🎯 Topic is not highly emerging - add modern keywords to improve relevance")
+        
+        # Open access
+        if not features.get('is_oa', 0):
+            recommendations.append("🌐 Consider publishing open access to increase visibility")
+        
+        # General promotion
+        if score < 60:
+            recommendations.append("📢 Actively promote article on social media and academic networks")
+        
+        if features.get('title_has_question', 0):
+            recommendations.append("💡 Title with question may attract more readers - consider highlighting this")
+        
+        return recommendations
+    
+    def _calculate_confidence(self, features: Dict) -> float:
+        """Calculates confidence in prediction"""
+        # More features with positive values = higher confidence
+        positive_features = sum(1 for v in features.values() if v > 0)
+        total_features = len(features)
+        
+        confidence = (positive_features / total_features) * 0.8 + 0.2
+        return min(1, confidence)
+    
+    def predict_all_articles(self) -> List[Dict]:
+        """Predicts citation potential for all articles"""
+        predictions = []
+        for article in self.training_data:
+            pred = self.predict_citation_potential(article)
+            predictions.append({
+                'title': article.get('title', 'No title'),
+                'doi': article.get('doi', ''),
+                'year': article.get('publication_year', 0),
+                'actual_citations': article.get('cited_by_count', 0),
+                'predicted_score': pred['score'],
+                'category': pred['category'],
+                'recommendations': pred['recommendations'],
+                'predicted_citations': pred['predicted_citations'],
+                'confidence': pred['confidence']
+            })
+        
+        return sorted(predictions, key=lambda x: x['predicted_score'], reverse=True)
+
+# ============================================================================
+# NEW: EDITOR'S CHOICE MODULE
+# ============================================================================
+
+class EditorsChoiceModule:
+    """
+    Automatic selection of articles for Editor's Choice
+    """
+    
+    def __init__(self, articles: List[dict], hierarchy: Dict):
+        self.articles = articles
+        self.hierarchy = hierarchy
+        self.current_year = datetime.now().year
+        self.dynamics_analyzer = CitationDynamicsAnalyzer(articles)
+        self.analyzed_articles = self.dynamics_analyzer.analyze_all_articles()
+    
+    def _get_topic_importance(self, topic: str) -> float:
+        """Evaluates topic importance for the journal"""
+        if not topic:
+            return 0
+        
+        # Count articles in this topic
+        topic_count = 0
+        for domain in self.hierarchy.values():
+            for field in domain.values():
+                for subfield in field.values():
+                    if topic in subfield:
+                        topic_count += len(subfield[topic])
+                        break
+        
+        # Rare topics get higher importance
+        if topic_count == 0:
+            return 0
+        elif topic_count <= 3:
+            return 1.0
+        elif topic_count <= 10:
+            return 0.7
+        else:
+            return 0.3
+    
+    def _calculate_novelty_score(self, article: dict) -> float:
+        """Calculates novelty score for article"""
+        title = article.get('title', '').lower()
+        
+        novelty_keywords = ['novel', 'new', 'first', 'emerging', 'innovative',
+                           'discovery', 'breakthrough', 'unprecedented',
+                           'next-generation', 'paradigm']
+        
+        score = sum(1 for kw in novelty_keywords if kw in title)
+        return min(1, score / 4)
+    
+    def _calculate_interdisciplinarity(self, article: dict) -> float:
+        """Calculates interdisciplinarity score"""
+        # Check for multiple topic references
+        # In production, this would analyze references
+        # For now, use simple heuristic
+        topics = set()
+        
+        primary_topic = article.get('primary_topic', '')
+        if primary_topic:
+            topics.add(primary_topic)
+        
+        # Check title for multi-disciplinary keywords
+        title = article.get('title', '').lower()
+        cross_domain_words = ['interdisciplinary', 'cross-disciplinary', 'multidisciplinary',
+                             'across', 'between', 'bridge']
+        
+        for word in cross_domain_words:
+            if word in title:
+                topics.add('interdisciplinary')
+        
+        return min(1, len(topics) / 3)
+    
+    def _calculate_social_impact(self, article: dict) -> float:
+        """Calculates social impact score"""
+        # In production, this would use altmetrics
+        # For now, use citation velocity as proxy
+        analysis = next((a for a in self.analyzed_articles 
+                        if a.get('doi') == article.get('doi')), None)
+        
+        if analysis:
+            velocity = analysis.get('patterns', {}).get('velocity', 0)
+            return min(1, velocity / 10)
+        
+        return 0.3
+    
+    def _has_international_collaboration(self, article: dict) -> bool:
+        """Checks for international collaboration"""
+        authors = article.get('authors_list', [])
+        if len(authors) < 2:
+            return False
+        
+        # Simple heuristic: check for diverse name patterns
+        name_styles = set()
+        for author in authors:
+            if re.search(r'[a-z]', author) and re.search(r'[A-Z]', author):
+                name_styles.add('western')
+            elif re.search(r'[а-яА-Я]', author):
+                name_styles.add('cyrillic')
+            else:
+                name_styles.add('other')
+        
+        return len(name_styles) >= 2
+    
+    def _is_sleeping_beauty_article(self, article: dict) -> bool:
+        """Checks if article is a sleeping beauty"""
+        analysis = next((a for a in self.analyzed_articles 
+                        if a.get('doi') == article.get('doi')), None)
+        if analysis:
+            return analysis['category'] == '👸 SLEEPING BEAUTY'
+        return False
+    
+    def _is_topic_leader(self, article: dict) -> bool:
+        """Checks if article is a leader in its topic"""
+        topic = article.get('primary_topic', '')
+        if not topic:
+            return False
+        
+        # Find all articles in same topic
+        topic_articles = []
+        for domain in self.hierarchy.values():
+            for field in domain.values():
+                for subfield in field.values():
+                    if topic in subfield:
+                        topic_articles.extend(subfield[topic])
+                        break
+        
+        if len(topic_articles) < 3:
+            return False
+        
+        # Check if this article has above-average citations in its topic
+        avg_citations = sum(a.get('cited_by_count', 0) for a in topic_articles) / len(topic_articles)
+        article_citations = article.get('cited_by_count', 0)
+        
+        return article_citations > avg_citations * 1.5
+    
+    def _calculate_editors_choice_score(self, article: dict) -> float:
+        """
+        Calculates Editor's Choice score for article
+        """
+        score = 0
+        
+        # 1. Academic impact (35%)
+        citations = article.get('cited_by_count', 0)
+        cpy = article.get('citations_per_year', 0)
+        score += min(citations, 100) * 0.25
+        score += min(cpy, 20) * 0.10
+        
+        # 2. Topic importance (25%)
+        topic = article.get('primary_topic', '')
+        topic_score = self._get_topic_importance(topic)
+        score += topic_score * 0.25
+        
+        # 3. Novelty (20%)
+        novelty_score = self._calculate_novelty_score(article)
+        score += novelty_score * 0.20
+        
+        # 4. Interdisciplinarity (10%)
+        interdisciplinarity = self._calculate_interdisciplinarity(article)
+        score += interdisciplinarity * 0.10
+        
+        # 5. Social impact (10%)
+        social_impact = self._calculate_social_impact(article)
+        score += social_impact * 0.10
+        
+        # 6. Bonuses
+        if self._has_international_collaboration(article):
+            score += 5
+        
+        if self._is_sleeping_beauty_article(article):
+            score += 10
+        
+        if self._is_topic_leader(article):
+            score += 15
+        
+        return min(100, score)
+    
+    def _get_fulfilled_criteria(self, article: dict) -> List[str]:
+        """Returns list of fulfilled criteria"""
+        criteria = []
+        
+        # Check each criterion
+        citations = article.get('cited_by_count', 0)
+        if citations > 10:
+            criteria.append("High citations")
+        
+        if article.get('citations_per_year', 0) > 2:
+            criteria.append("Strong citation velocity")
+        
+        topic = article.get('primary_topic', '')
+        if self._get_topic_importance(topic) > 0.7:
+            criteria.append("Important/rare topic")
+        
+        if self._calculate_novelty_score(article) > 0.5:
+            criteria.append("Novel research")
+        
+        if self._calculate_interdisciplinarity(article) > 0.5:
+            criteria.append("Interdisciplinary")
+        
+        if self._has_international_collaboration(article):
+            criteria.append("International collaboration")
+        
+        if self._is_sleeping_beauty_article(article):
+            criteria.append("Sleeping Beauty - high revival potential")
+        
+        if self._is_topic_leader(article):
+            criteria.append("Topic leader")
+        
+        return criteria
+    
+    def _get_recommendation(self, article: dict) -> str:
+        """Generates recommendation for Editor's Choice"""
+        score = self._calculate_editors_choice_score(article)
+        
+        if score > 80:
+            return "Highly recommended for Editor's Choice - exceptional paper"
+        elif score > 70:
+            return "Strong candidate for Editor's Choice"
+        elif score > 60:
+            return "Consider for Editor's Choice - good potential"
+        else:
+            return "Monitor for future consideration"
+    
+    def _generate_statistics(self, candidates: List[Dict]) -> Dict:
+        """Generates statistics about candidates"""
+        if not candidates:
+            return {
+                'total_candidates': 0,
+                'avg_score': 0,
+                'top_categories': []
+            }
+        
+        total = len(candidates)
+        avg_score = sum(c['score'] for c in candidates) / total
+        
+        # Top categories
+        categories = {}
+        for candidate in candidates:
+            article = candidate['article']
+            topic = article.get('primary_topic', 'Unknown')
+            categories[topic] = categories.get(topic, 0) + 1
+        
+        top_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        return {
+            'total_candidates': total,
+            'avg_score': avg_score,
+            'top_categories': top_categories
+        }
+    
+    def select_candidates(self) -> Dict:
+        """
+        Selects candidates for Editor's Choice
+        """
+        candidates = []
+        
+        for article in self.articles:
+            score = self._calculate_editors_choice_score(article)
+            
+            if score > 50:  # Threshold
+                candidates.append({
+                    'article': article,
+                    'score': score,
+                    'criteria': self._get_fulfilled_criteria(article),
+                    'recommendation': self._get_recommendation(article)
+                })
+        
+        # Sort by score
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+        
+        return {
+            'top_picks': candidates[:10],
+            'honorable_mentions': candidates[10:20],
+            'statistics': self._generate_statistics(candidates)
+        }
+
+# ============================================================================
+# NEW: JOURNAL PROFILE GENERATOR
+# ============================================================================
+
+class JournalProfileGenerator:
+    """
+    Generates comprehensive journal profile for editorial board
+    """
+    
+    def __init__(self, journal_info: dict, articles: List[dict], hierarchy: Dict):
+        self.journal_info = journal_info
+        self.articles = articles
+        self.hierarchy = hierarchy
+        self.stats = calculate_hierarchy_statistics(hierarchy, include_metrics=True)
+        self.hot_analyzer = HotTopicsAnalyzer(articles)
+        self.dynamics_analyzer = CitationDynamicsAnalyzer(articles)
+        self.author_analyzer = AuthorAnalyzer(articles)
+        self.current_year = datetime.now().year
+    
+    def _calculate_oa_percentage(self) -> float:
+        """Calculates Open Access percentage"""
+        if not self.articles:
+            return 0
+        oa_count = sum(1 for a in self.articles if a.get('is_oa', False))
+        return (oa_count / len(self.articles)) * 100
+    
+    def _calculate_h_index_journal(self) -> int:
+        """Calculates journal H-index"""
+        citations = sorted([a.get('cited_by_count', 0) for a in self.articles], reverse=True)
+        h_index = 0
+        for i, c in enumerate(citations, 1):
+            if c >= i:
+                h_index = i
+            else:
+                break
+        return h_index
+    
+    def _calculate_eigenfactor(self) -> float:
+        """Simplified Eigenfactor calculation"""
+        # In production, this would use citation network analysis
+        # For now, use a simplified metric
+        total_citations = sum(a.get('cited_by_count', 0) for a in self.articles)
+        total_articles = len(self.articles)
+        
+        if total_articles == 0:
+            return 0
+        
+        avg_citations = total_citations / total_articles
+        h_index = self._calculate_h_index_journal()
+        
+        # Combined metric
+        eigenfactor = (avg_citations * 0.3 + h_index * 0.7) / 10
+        return min(1, eigenfactor)
+    
+    def _calculate_citing_half_life(self) -> float:
+        """Calculates citing half-life (simplified)"""
+        if not self.articles:
+            return 0
+        
+        current_year = self.current_year
+        citations_by_age = defaultdict(int)
+        
+        for article in self.articles:
+            age = current_year - article.get('publication_year', current_year)
+            citations_by_age[age] += article.get('cited_by_count', 0)
+        
+        # Find when 50% of citations occurred
+        total_citations = sum(citations_by_age.values())
+        if total_citations == 0:
+            return 0
+        
+        cumulative = 0
+        sorted_ages = sorted(citations_by_age.items())
+        
+        for age, count in sorted_ages:
+            cumulative += count
+            if cumulative >= total_citations * 0.5:
+                return age
+        
+        return current_year - min(a.get('publication_year', current_year) for a in self.articles)
+    
+    def _calculate_citation_velocity_journal(self) -> float:
+        """Calculates journal citation velocity"""
+        if len(self.articles) < 2:
+            return 0
+        
+        years = sorted(set(a.get('publication_year', 0) for a in self.articles if a.get('publication_year', 0) > 0))
+        if len(years) < 2:
+            return 0
+        
+        yearly_citations = defaultdict(int)
+        for article in self.articles:
+            year = article.get('publication_year', 0)
+            if year > 0:
+                yearly_citations[year] += article.get('cited_by_count', 0)
+        
+        first_year = min(years)
+        last_year = max(years)
+        
+        if first_year == last_year:
+            return 0
+        
+        first_citations = yearly_citations.get(first_year, 0)
+        last_citations = yearly_citations.get(last_year, 0)
+        
+        return (last_citations - first_citations) / (last_year - first_year)
+    
+    def _find_most_diverse_field(self) -> str:
+        """Finds field with most diverse topics"""
+        max_diversity = 0
+        most_diverse_field = 'N/A'
+        
+        for domain, fields in self.hierarchy.items():
+            for field, subfields in fields.items():
+                total_subfields = len(subfields)
+                total_topics = sum(len(topics) for topics in subfields.values())
+                
+                diversity = total_topics / max(1, total_subfields)
+                if diversity > max_diversity:
+                    max_diversity = diversity
+                    most_diverse_field = field
+        
+        return most_diverse_field
+    
+    def _find_emerging_topics(self) -> List[str]:
+        """Identifies emerging topics"""
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        emerging = [m['topic'] for m in all_metrics 
+                   if m['hot_zone'] in ['🔥 EMERGING STAR', '📈 GROWING POWER']]
+        return emerging[:5]
+    
+    def _find_declining_topics(self) -> List[str]:
+        """Identifies declining topics"""
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        declining = [m['topic'] for m in all_metrics 
+                    if m['hot_zone'] == '📉 DECLINING']
+        return declining[:5]
+    
+    def _identify_strengths(self) -> List[str]:
+        """Identifies journal strengths"""
+        strengths = []
+        
+        # Strong citation performance
+        avg_citations = sum(a.get('cited_by_count', 0) for a in self.articles) / len(self.articles) if self.articles else 0
+        if avg_citations > 5:
+            strengths.append(f"Good average citation rate: {avg_citations:.1f} per article")
+        
+        # Strong topics
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        hot_topics = [m for m in all_metrics if m['ets'] > 60]
+        if hot_topics:
+            strengths.append(f"Multiple hot topics: {', '.join([m['topic'][:30] for m in hot_topics[:3]])}")
+        
+        # High impact articles
+        highly_cited = [a for a in self.articles if a.get('is_highly_cited', False)]
+        if highly_cited:
+            strengths.append(f"Strong track record with {len(highly_cited)} highly cited articles")
+        
+        # Author diversity
+        author_analysis = self.author_analyzer.analyze()
+        active_authors = sum(1 for a in author_analysis.values() if a['active'])
+        if active_authors > 10:
+            strengths.append(f"Active author community: {active_authors} active researchers")
+        
+        return strengths
+    
+    def _identify_weaknesses(self) -> List[str]:
+        """Identifies journal weaknesses"""
+        weaknesses = []
+        
+        # Low citation rate
+        avg_citations = sum(a.get('cited_by_count', 0) for a in self.articles) / len(self.articles) if self.articles else 0
+        if avg_citations < 3:
+            weaknesses.append("Below average citation rate")
+        
+        # Few hot topics
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        hot_topics = [m for m in all_metrics if m['ets'] > 60]
+        if len(hot_topics) < 2:
+            weaknesses.append("Limited number of hot topics")
+        
+        # Many uncited articles
+        uncited = [a for a in self.articles if a.get('cited_by_count', 0) == 0]
+        if len(uncited) > len(self.articles) * 0.2:
+            weaknesses.append(f"High percentage of uncited articles: {len(uncited)}")
+        
+        # Low author activity
+        author_analysis = self.author_analyzer.analyze()
+        active_authors = sum(1 for a in author_analysis.values() if a['active'])
+        if active_authors < 5:
+            weaknesses.append("Limited active author base")
+        
+        return weaknesses
+    
+    def _identify_opportunities(self) -> List[str]:
+        """Identifies opportunities for journal"""
+        opportunities = []
+        
+        # Emerging topics
+        emerging = self._find_emerging_topics()
+        if emerging:
+            opportunities.append(f"Capitalize on emerging topics: {', '.join(emerging[:3])}")
+        
+        # High potential articles
+        predictor = CitationPredictor(self.articles)
+        predictions = predictor.predict_all_articles()
+        high_potential = [p for p in predictions if p['predicted_score'] > 70]
+        if high_potential:
+            opportunities.append(f"Promote {len(high_potential)} high-potential articles")
+        
+        # Collaboration opportunities
+        author_analysis = self.author_analyzer.analyze()
+        solo_authors = [a for a in author_analysis.values() if a['num_collaborators'] == 0]
+        if len(solo_authors) > len(author_analysis) * 0.2:
+            opportunities.append("Encourage international collaboration")
+        
+        # Open access
+        oa_percentage = self._calculate_oa_percentage()
+        if oa_percentage < 30:
+            opportunities.append("Expand open access to increase visibility")
+        
+        return opportunities
+    
+    def _identify_threats(self) -> List[str]:
+        """Identifies threats to journal"""
+        threats = []
+        
+        # Declining topics
+        declining = self._find_declining_topics()
+        if declining:
+            threats.append(f"Watch declining topics: {', '.join(declining[:3])}")
+        
+        # Decreasing citations
+        if len(self.articles) > 10:
+            recent_citations = sum(a.get('cited_by_count', 0) for a in self.articles 
+                                  if a.get('publication_year', 0) > self.current_year - 3)
+            older_citations = sum(a.get('cited_by_count', 0) for a in self.articles 
+                                if a.get('publication_year', 0) <= self.current_year - 3)
+            
+            if recent_citations < older_citations * 0.7:
+                threats.append("Declining citation rate in recent years")
+        
+        # Author concentration
+        author_analysis = self.author_analyzer.analyze()
+        if author_analysis:
+            top_authors = sorted(author_analysis.items(), key=lambda x: x[1]['articles'], reverse=True)
+            if len(top_authors) > 3:
+                top_3_articles = sum(m[1]['articles'] for m in top_authors[:3])
+                if top_3_articles > len(self.articles) * 0.4:
+                    threats.append("High author concentration - risk of dependency")
+        
+        return threats
+    
+    def _get_strategic_recommendations(self) -> List[str]:
+        """Generates strategic recommendations"""
+        recommendations = []
+        
+        strengths = self._identify_strengths()
+        weaknesses = self._identify_weaknesses()
+        opportunities = self._identify_opportunities()
+        threats = self._identify_threats()
+        
+        # Based on SWOT analysis
+        if opportunities:
+            recommendations.append(f"Priority: {opportunities[0]}")
+        
+        if weaknesses and 'high percentage of uncited articles' in weaknesses[0]:
+            recommendations.append("Implement targeted promotion for uncited articles")
+        
+        if threats and 'declining citation rate' in threats[0]:
+            recommendations.append("Review editorial strategy to boost citations")
+        
+        if len([s for s in strengths if 'hot topics' in s]) > 0:
+            recommendations.append("Feature hot topics in special issues and editorials")
+        
+        if len(opportunities) > 1:
+            recommendations.append(f"Explore: {opportunities[1]}")
+        
+        return recommendations
+    
+    def _get_action_items(self) -> List[str]:
+        """Generates actionable items"""
+        actions = []
+        
+        # Immediate actions
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        hot_topics = [m for m in all_metrics if m['ets'] > 70]
+        if hot_topics:
+            actions.append(f"Create special collection on '{hot_topics[0]['topic']}'")
+        
+        # Author engagement
+        author_analysis = self.author_analyzer.analyze()
+        inactive = [name for name, data in author_analysis.items() 
+                   if not data['active'] and data['articles'] > 0]
+        if inactive:
+            actions.append("Reach out to inactive authors")
+        
+        # Article promotion
+        predictor = CitationPredictor(self.articles)
+        predictions = predictor.predict_all_articles()
+        high_potential = [p for p in predictions if p['predicted_score'] > 70 and p['actual_citations'] < 5]
+        if high_potential:
+            actions.append(f"Promote {len(high_potential)} underperforming high-potential articles")
+        
+        # Open access
+        oa_percentage = self._calculate_oa_percentage()
+        if oa_percentage < 30:
+            actions.append("Consider expanding open access options")
+        
+        return actions
+    
+    def _assess_competitive_position(self) -> Dict:
+        """Assesses competitive position"""
+        # In production, this would compare with other journals
+        # For now, use internal metrics
+        avg_citations = sum(a.get('cited_by_count', 0) for a in self.articles) / len(self.articles) if self.articles else 0
+        
+        if avg_citations > 10:
+            position = "Leader"
+        elif avg_citations > 5:
+            position = "Competitive"
+        elif avg_citations > 3:
+            position = "Developing"
+        else:
+            position = "Emerging"
+        
+        return {
+            'position': position,
+            'strength_index': min(100, avg_citations * 5),
+            'growth_potential': min(100, self._calculate_eigenfactor() * 50)
+        }
+    
+    def generate_profile(self) -> Dict:
+        """
+        Generates complete journal profile
+        """
+        first_year = min(a.get('publication_year', 9999) for a in self.articles) if self.articles else 0
+        last_year = max(a.get('publication_year', 0) for a in self.articles) if self.articles else 0
+        
+        metrics = self._generate_performance_metrics()
+        
+        return {
+            'basic_info': {
+                'name': self.journal_info.get('display_name', 'Unknown'),
+                'issn': self.journal_info.get('issn', ''),
+                'publisher': self.journal_info.get('publisher', ''),
+                'total_articles': len(self.articles),
+                'publication_period': f"{first_year} - {last_year}" if first_year else 'N/A',
+                'open_access': self._calculate_oa_percentage(),
+                'avg_articles_per_year': len(self.articles) / (last_year - first_year + 1) if last_year > first_year else 0
+            },
+            'performance_metrics': metrics,
+            'top_articles': self._get_top_articles(),
+            'topic_landscape': self._get_topic_landscape(),
+            'author_insights': self._get_author_insights(),
+            'citation_analysis': self._get_citation_analysis(),
+            'hot_topics': self._get_hot_topics(),
+            'recommendations': self._get_recommendations(),
+            'comparative_analysis': self._get_comparative_analysis(),
+            'temporal_trends': self._get_temporal_trends(),
+            'international_impact': self._get_international_impact(),
+            'editorial_summary': self._generate_editorial_summary()
+        }
+    
+    def _generate_performance_metrics(self) -> Dict:
+        """Generates performance metrics"""
+        total_citations = sum(a.get('cited_by_count', 0) for a in self.articles)
+        highly_cited = sum(1 for a in self.articles if a.get('is_highly_cited', False))
+        
+        # Simplified IF
+        current_year = self.current_year
+        if_count = 0
+        for year in [current_year - 1, current_year - 2]:
+            year_articles = [a for a in self.articles if a.get('publication_year') == year]
+            if year_articles:
+                citations_to_year = sum(a.get('cited_by_count', 0) for a in year_articles)
+                if_count += citations_to_year / len(year_articles)
+        avg_if = if_count / 2 if if_count > 0 else 0
+        
+        return {
+            'total_citations': total_citations,
+            'avg_citations': total_citations / len(self.articles) if self.articles else 0,
+            'highly_cited': highly_cited,
+            'highly_cited_percentage': (highly_cited / len(self.articles)) * 100 if self.articles else 0,
+            'h_index': self._calculate_h_index_journal(),
+            'simplified_if': avg_if,
+            'eigenfactor': self._calculate_eigenfactor(),
+            'citing_half_life': self._calculate_citing_half_life(),
+            'citation_velocity': self._calculate_citation_velocity_journal()
+        }
+    
+    def _get_top_articles(self) -> Dict:
+        """Gets top articles by various criteria"""
+        if not self.articles:
+            return {
+                'most_cited': [],
+                'most_cited_per_year': [],
+                'best_rcr': [],
+                'showcase': []
+            }
+        
+        # By total citations
+        by_citations = sorted(self.articles, 
+                            key=lambda x: x.get('cited_by_count', 0), reverse=True)[:10]
+        
+        # By citations per year
+        by_cpy = sorted(self.articles, 
+                       key=lambda x: x.get('citations_per_year', 0), reverse=True)[:10]
+        
+        # Best RCR (simplified)
+        by_rcr = sorted(self.articles, 
+                       key=lambda x: x.get('cited_by_count', 0) / max(1, x.get('citations_per_year', 1)), 
+                       reverse=True)[:10]
+        
+        # Showcase selection
+        showcase = self._select_showcase_articles()
+        
+        return {
+            'most_cited': by_citations,
+            'most_cited_per_year': by_cpy,
+            'best_rcr': by_rcr,
+            'showcase': showcase
+        }
+    
+    def _select_showcase_articles(self) -> List[dict]:
+        """Selects best articles for journal showcase"""
+        scored_articles = []
+        
+        for article in self.articles:
+            score = 0
+            
+            # 1. Citations
+            citations = article.get('cited_by_count', 0)
+            score += min(citations, 100) * 0.3
+            
+            # 2. Topic relevance
+            topic = article.get('primary_topic', '')
+            if any(w in topic.lower() for w in ['emerging', 'future', 'novel']):
+                score += 20
+            
+            # 3. Article age (younger gets bonus)
+            age = self.current_year - article.get('publication_year', self.current_year)
+            if age <= 3:
+                score += (4 - age) * 5
+            
+            # 4. International collaboration
+            if self._has_international_collaboration(article):
+                score += 15
+            
+            # 5. Impact velocity
+            cpy = article.get('citations_per_year', 0)
+            score += min(cpy * 2, 20)
+            
+            scored_articles.append((score, article))
+        
+        scored_articles.sort(reverse=True)
+        return [article for _, article in scored_articles[:5]]
+    
+    def _has_international_collaboration(self, article: dict) -> bool:
+        """Checks for international collaboration"""
+        authors = article.get('authors_list', [])
+        if len(authors) < 2:
+            return False
+        
+        name_styles = set()
+        for author in authors:
+            if re.search(r'[a-z]', author) and re.search(r'[A-Z]', author):
+                name_styles.add('western')
+            elif re.search(r'[а-яА-Я]', author):
+                name_styles.add('cyrillic')
+            else:
+                name_styles.add('other')
+        
+        return len(name_styles) >= 2
+    
+    def _get_topic_landscape(self) -> Dict:
+        """Gets topic landscape overview"""
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        top_topics = sorted(all_metrics, key=lambda x: x['total_citations'], reverse=True)[:10]
+        
+        return {
+            'strongest_topics': top_topics,
+            'most_diverse_field': self._find_most_diverse_field(),
+            'emerging_topics': self._find_emerging_topics(),
+            'declining_topics': self._find_declining_topics()
+        }
+    
+    def _get_author_insights(self) -> Dict:
+        """Gets author insights"""
+        analysis = self.author_analyzer.analyze()
+        
+        top_authors = sorted(analysis.items(), 
+                           key=lambda x: x[1]['total_citations'], reverse=True)[:10]
+        
+        return {
+            'top_authors': [{'name': name, **metrics} for name, metrics in top_authors],
+            'total_active_authors': sum(1 for a in analysis.values() if a['active']),
+            'avg_collaboration': sum(a['num_collaborators'] for a in analysis.values()) / max(1, len(analysis))
+        }
+    
+    def _get_citation_analysis(self) -> Dict:
+        """Gets citation analysis"""
+        dynamics_results = self.dynamics_analyzer.analyze_all_articles()
+        categories = self.dynamics_analyzer.get_categories_summary(dynamics_results)
+        
+        return {
+            'categories': categories,
+            'total_analyzed': len(dynamics_results),
+            'average_age': sum(a.get('publication_year', 0) for a in self.articles) / len(self.articles) if self.articles else 0
+        }
+    
+    def _get_hot_topics(self) -> List[Dict]:
+        """Gets hot topics list"""
+        all_metrics = self.hot_analyzer.calculate_metrics_for_all_topics(self.hierarchy)
+        return [m for m in all_metrics if m['ets'] > 50][:10]
+    
+    def _get_recommendations(self) -> List[str]:
+        """Gets recommendations for editors"""
+        return self._get_strategic_recommendations()
+    
+    def _get_comparative_analysis(self) -> Dict:
+        """Gets comparative analysis"""
+        return self._assess_competitive_position()
+    
+    def _get_temporal_trends(self) -> Dict:
+        """Gets temporal trends"""
+        yearly_metrics = defaultdict(lambda: {'articles': 0, 'citations': 0})
+        
+        for article in self.articles:
+            year = article.get('publication_year', 0)
+            if year > 0:
+                yearly_metrics[year]['articles'] += 1
+                yearly_metrics[year]['citations'] += article.get('cited_by_count', 0)
+        
+        years = sorted(yearly_metrics.keys())
+        trends = {
+            'articles': [yearly_metrics[y]['articles'] for y in years],
+            'citations': [yearly_metrics[y]['citations'] for y in years],
+            'years': years
+        }
+        
+        # Calculate growth rate
+        if len(years) >= 2:
+            first_year = years[0]
+            last_year = years[-1]
+            article_growth = (yearly_metrics[last_year]['articles'] - yearly_metrics[first_year]['articles']) / max(1, yearly_metrics[first_year]['articles']) * 100
+            citation_growth = (yearly_metrics[last_year]['citations'] - yearly_metrics[first_year]['citations']) / max(1, yearly_metrics[first_year]['citations']) * 100
+        else:
+            article_growth = 0
+            citation_growth = 0
+        
+        trends['article_growth'] = article_growth
+        trends['citation_growth'] = citation_growth
+        
+        return trends
+    
+    def _get_international_impact(self) -> Dict:
+        """Gets international impact metrics"""
+        # Simplified international impact
+        international_authors = 0
+        for article in self.articles:
+            if self._has_international_collaboration(article):
+                international_authors += 1
+        
+        return {
+            'international_collaboration_rate': (international_authors / len(self.articles)) * 100 if self.articles else 0,
+            'estimated_international_citations': sum(a.get('cited_by_count', 0) * 0.3 for a in self.articles)
+        }
+    
+    def _generate_editorial_summary(self) -> Dict:
+        """
+        Generates editorial summary with recommendations
+        """
+        return {
+            'strengths': self._identify_strengths(),
+            'weaknesses': self._identify_weaknesses(),
+            'opportunities': self._identify_opportunities(),
+            'threats': self._identify_threats(),
+            'strategic_recommendations': self._get_strategic_recommendations(),
+            'action_items': self._get_action_items(),
+            'competitive_position': self._assess_competitive_position()
+        }
 
 # ============================================================================
 # PDF REPORT GENERATION (RUSSIAN) WITH HIERARCHY AND METRICS TOGGLE
@@ -3139,6 +5155,212 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     return "\n".join(output)
 
 # ============================================================================
+# NEW: VISUALIZATION FUNCTIONS FOR UI DASHBOARDS
+# ============================================================================
+
+def create_topic_treemap(hierarchy: Dict, stats: Dict):
+    """
+    Creates interactive treemap of research topics
+    """
+    import plotly.graph_objects as go
+    
+    # Prepare data for treemap
+    labels = []
+    parents = []
+    values = []
+    colors = []
+    text = []
+    
+    # Add root node
+    labels.append('All Articles')
+    parents.append('')
+    values.append(sum(s['articles'] for s in stats.values()))
+    colors.append('#667eea')
+    text.append(f"Total: {values[0]} articles")
+    
+    # Add domains
+    for domain, domain_stats in stats.items():
+        domain_idx = len(labels)
+        labels.append(domain)
+        parents.append('All Articles')
+        values.append(domain_stats['articles'])
+        colors.append('#764ba2')
+        text.append(f"{domain}<br>{domain_stats['articles']} articles")
+        
+        # Add fields
+        for field, field_stats in domain_stats['fields'].items():
+            labels.append(field)
+            parents.append(domain)
+            values.append(field_stats['articles'])
+            colors.append('#f093fb')
+            text.append(f"{field}<br>{field_stats['articles']} articles")
+            
+            # Add subfields
+            for subfield, subfield_stats in field_stats['subfields'].items():
+                labels.append(subfield)
+                parents.append(field)
+                values.append(subfield_stats['articles'])
+                colors.append('#4facfe')
+                text.append(f"{subfield}<br>{subfield_stats['articles']} articles")
+    
+    fig = go.Figure(go.Treemap(
+        labels=labels,
+        parents=parents,
+        values=values,
+        text=text,
+        textinfo='text',
+        hoverinfo='label+value',
+        marker=dict(
+            colors=colors,
+            colorscale='Viridis',
+            showscale=True,
+            line=dict(width=2, color='white')
+        ),
+        hovertemplate='<b>%{label}</b><br>Articles: %{value}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title='Research Topic Hierarchy - Treemap',
+        width=800,
+        height=600
+    )
+    
+    return fig
+
+def create_topic_bubble_chart(hierarchy: Dict, stats: Dict, hot_metrics: List[Dict]):
+    """
+    Creates interactive bubble chart of research topics
+    """
+    import plotly.express as px
+    
+    data = []
+    
+    for domain, domain_stats in stats.items():
+        for field, field_stats in domain_stats['fields'].items():
+            for subfield, subfield_stats in field_stats['subfields'].items():
+                articles = subfield_stats['articles']
+                citations = subfield_stats['citations'] if subfield_stats['citations'] is not None else 0
+                avg_citations = subfield_stats['avg_citations'] if subfield_stats['avg_citations'] is not None else 0
+                
+                # Find hot metrics for this subfield
+                hot_score = 0
+                for metric in hot_metrics:
+                    if metric['subfield'] == subfield:
+                        hot_score = metric['ets']
+                        break
+                
+                data.append({
+                    'Domain': domain,
+                    'Field': field,
+                    'Subfield': subfield,
+                    'Articles': articles,
+                    'Citations': citations,
+                    'Avg Citations': round(avg_citations, 1),
+                    'Hot Score': hot_score,
+                    'Color': hot_score
+                })
+    
+    df = pd.DataFrame(data)
+    
+    fig = px.scatter(df,
+                     x='Citations',
+                     y='Avg Citations',
+                     size='Articles',
+                     color='Hot Score',
+                     hover_name='Subfield',
+                     hover_data=['Domain', 'Field', 'Articles'],
+                     color_continuous_scale='Viridis',
+                     title='Research Topics: Citations vs Avg Citations',
+                     labels={
+                         'Citations': 'Total Citations',
+                         'Avg Citations': 'Avg Citations per Article'
+                     })
+    
+    fig.update_traces(
+        marker=dict(line=dict(width=1, color='white')),
+        hovertemplate='<b>%{hovertext}</b><br>' +
+                     'Domain: %{customdata[0]}<br>' +
+                     'Field: %{customdata[1]}<br>' +
+                     'Articles: %{customdata[2]}<br>' +
+                     'Citations: %{x}<br>' +
+                     'Avg Citations: %{y}<extra></extra>'
+    )
+    
+    return fig
+
+def create_citation_timeline(articles: List[dict]):
+    """
+    Creates citation timeline chart
+    """
+    import plotly.graph_objects as go
+    
+    years_data = defaultdict(lambda: {'articles': 0, 'citations': 0, 'highly_cited': 0})
+    
+    for article in articles:
+        year = article.get('publication_year', 0)
+        if year > 0:
+            years_data[year]['articles'] += 1
+            years_data[year]['citations'] += article.get('cited_by_count', 0)
+            if article.get('is_highly_cited', False):
+                years_data[year]['highly_cited'] += 1
+    
+    years = sorted(years_data.keys())
+    article_counts = [years_data[y]['articles'] for y in years]
+    citation_counts = [years_data[y]['citations'] for y in years]
+    highly_cited_counts = [years_data[y]['highly_cited'] for y in years]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=years,
+        y=article_counts,
+        name='Articles',
+        marker_color='#667eea',
+        yaxis='y'
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=citation_counts,
+        name='Citations',
+        marker_color='#764ba2',
+        yaxis='y2',
+        line=dict(width=2)
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=years,
+        y=highly_cited_counts,
+        name='Highly Cited',
+        marker_color='#f093fb',
+        yaxis='y'
+    ))
+    
+    fig.update_layout(
+        title='Publication and Citation Trends',
+        xaxis_title='Year',
+        yaxis=dict(
+            title='Number of Articles',
+            side='left'
+        ),
+        yaxis2=dict(
+            title='Number of Citations',
+            overlaying='y',
+            side='right'
+        ),
+        hovermode='x unified',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='center',
+            x=0.5
+        )
+    )
+    
+    return fig
+
+# ============================================================================
 # APPLICATION INTERFACE
 # ============================================================================
 
@@ -3317,6 +5539,7 @@ def main():
         journal_name = st.session_state.journal_info.get('display_name', 'Journal')
         hierarchy = st.session_state.hierarchy
         years = st.session_state.selected_years
+        articles = st.session_state.articles
         
         # Calculate statistics for display
         stats = calculate_hierarchy_statistics(hierarchy, st.session_state.include_metrics)
@@ -3459,65 +5682,410 @@ def main():
                         st.session_state.custom_message_ru = DEFAULT_MESSAGES['ru']['body']
                         st.rerun()
             
-            # Display hierarchy in UI
-            st.markdown("---")
-            st.markdown(f"### {t['research_hierarchy']}")
+            # ============================================================================
+            # NEW: EDITORIAL DASHBOARD WITH TABS
+            # ============================================================================
             
-            for domain, fields in hierarchy.items():
-                domain_stats = stats.get(domain, {})
-                domain_articles = domain_stats.get('articles', 0)
-                domain_citations = domain_stats.get('citations', 0) if st.session_state.include_metrics else 0
+            st.markdown("---")
+            st.markdown(f"### {t['editorial_dashboard']}")
+            
+            # Initialize all analyzers
+            hot_analyzer = HotTopicsAnalyzer(articles)
+            dynamics_analyzer = CitationDynamicsAnalyzer(articles)
+            author_analyzer = AuthorAnalyzer(articles)
+            predictor = CitationPredictor(articles)
+            editors_choice = EditorsChoiceModule(articles, hierarchy)
+            profile_generator = JournalProfileGenerator(
+                st.session_state.journal_info, articles, hierarchy
+            )
+            profile = profile_generator.generate_profile()
+            
+            # Create tabs for different dashboards
+            tabs = st.tabs([
+                "📊 Overview",
+                "🔥 Hot Topics",
+                "📈 Dynamics",
+                "👥 Authors",
+                "🔮 Predictions",
+                "⭐ Editor's Choice",
+                "📋 Research Hierarchy"
+            ])
+            
+            # Tab 1: Overview
+            with tabs[0]:
+                st.markdown("### 📊 Editorial Dashboard Overview")
                 
-                if st.session_state.include_metrics:
-                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}"
+                # Key metrics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("📄 Total Articles", len(articles))
+                with col2:
+                    avg_citations_total = sum(a.get('cited_by_count', 0) for a in articles) / len(articles) if articles else 0
+                    st.metric("📊 Avg Citations", f"{avg_citations_total:.1f}")
+                with col3:
+                    all_metrics = hot_analyzer.calculate_metrics_for_all_topics(hierarchy)
+                    hot_topics_count = len([m for m in all_metrics if m['ets'] > 70])
+                    st.metric("🔥 Hot Topics", hot_topics_count)
+                with col4:
+                    author_analysis = author_analyzer.analyze()
+                    active_authors = sum(1 for a in author_analysis.values() if a.get('active', False))
+                    st.metric("👥 Active Authors", active_authors)
+                
+                # SWOT Analysis
+                st.markdown("#### 📊 SWOT Analysis")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Strengths**")
+                    for s in profile['editorial_summary']['strengths'][:5]:
+                        st.markdown(f"✅ {s}")
+                    
+                    st.markdown("**Opportunities**")
+                    for o in profile['editorial_summary']['opportunities'][:5]:
+                        st.markdown(f"🚀 {o}")
+                
+                with col2:
+                    st.markdown("**Weaknesses**")
+                    for w in profile['editorial_summary']['weaknesses'][:5]:
+                        st.markdown(f"⚠️ {w}")
+                    
+                    st.markdown("**Threats**")
+                    for t_list in profile['editorial_summary']['threats'][:5]:
+                        st.markdown(f"🔴 {t_list}")
+                
+                # Strategic Recommendations
+                st.markdown("#### 🎯 Strategic Recommendations")
+                for rec in profile['editorial_summary']['strategic_recommendations']:
+                    st.markdown(f"• {rec}")
+                
+                # Action Items
+                st.markdown("#### ✅ Action Items")
+                for action in profile['editorial_summary']['action_items']:
+                    st.markdown(f"• {action}")
+                
+                # Publication trends
+                st.markdown("#### 📈 Publication and Citation Trends")
+                fig_timeline = create_citation_timeline(articles)
+                st.plotly_chart(fig_timeline, use_container_width=True)
+            
+            # Tab 2: Hot Topics
+            with tabs[1]:
+                st.markdown(f"### {t['hot_topics_dashboard']}")
+                
+                all_metrics = hot_analyzer.calculate_metrics_for_all_topics(hierarchy)
+                
+                # Top hot topics
+                st.markdown("#### 🏆 Top 10 Hottest Topics")
+                for idx, metric in enumerate(all_metrics[:10], 1):
+                    zone_colors = {
+                        '🔥 EMERGING STAR': '#FF6B6B',
+                        '📈 GROWING POWER': '#FFA94D',
+                        '⚡ ESTABLISHED HOT': '#FFD93D',
+                        '🌱 PROMISING': '#6BCB77',
+                        '📉 DECLINING': '#A9A9A9',
+                        '💤 DORMANT': '#D3D3D3'
+                    }
+                    color = zone_colors.get(metric['hot_zone'], '#667eea')
+                    
+                    st.markdown(f"""
+                    <div style="background: {color}15; border-left: 4px solid {color}; 
+                                padding: 12px; border-radius: 8px; margin: 8px 0;">
+                        <b style="color: {color};">{idx}. {metric['topic'][:60]}</b><br>
+                        <span style="font-size: 0.85rem;">
+                            ETS: {metric['ets']:.1f} | 
+                            CAGR: {metric['cagr']:.1f}% | 
+                            RCR: {metric['rcr']:.2f} |
+                            Articles: {metric['articles']}
+                        </span><br>
+                        <span style="font-size: 0.8rem; color: #666;">
+                            {metric['hot_zone']} | 
+                            Momentum: {metric['momentum']:.2f}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Bubble chart
+                st.markdown("#### 📊 Topic Visualization")
+                fig_bubble = create_topic_bubble_chart(hierarchy, stats, all_metrics)
+                st.plotly_chart(fig_bubble, use_container_width=True)
+            
+            # Tab 3: Citation Dynamics
+            with tabs[2]:
+                st.markdown(f"### {t['citation_dynamics']}")
+                
+                dynamics_results = dynamics_analyzer.analyze_all_articles()
+                categories = dynamics_analyzer.get_categories_summary(dynamics_results)
+                
+                # Category summary
+                st.markdown("#### 📊 Category Distribution")
+                category_data = []
+                for cat, items in categories.items():
+                    category_data.append({
+                        'Category': cat,
+                        'Count': len(items)
+                    })
+                
+                df_cat = pd.DataFrame(category_data)
+                fig_cat = px.bar(df_cat, x='Category', y='Count', 
+                                title='Article Categories Distribution',
+                                color='Count',
+                                color_continuous_scale='Viridis')
+                st.plotly_chart(fig_cat, use_container_width=True)
+                
+                # Dormant and Awakening articles
+                st.markdown("#### 💤 Dormant / 🌅 Awakening Articles")
+                
+                dormant = [r for r in dynamics_results if 'DORMANT' in r['category']]
+                awakening = [r for r in dynamics_results if 'AWAKENING' in r['category']]
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("💤 Dormant", len(dormant))
+                with col2:
+                    st.metric("🌅 Awakening", len(awakening))
+                with col3:
+                    avg_revival = sum(r.get('revival_chance', 0) for r in dynamics_results) / len(dynamics_results) if dynamics_results else 0
+                    st.metric("📊 Avg Revival Chance", f"{avg_revival:.1%}")
+                
+                # Show top awakening candidates
+                if awakening:
+                    st.markdown("#### 🌅 Top Awakening Candidates")
+                    for r in awakening[:5]:
+                        st.markdown(f"""
+                        <div style="padding: 8px; margin: 4px 0; background: #f8f9fa; border-radius: 4px;">
+                            <b>{r['title'][:80]}</b><br>
+                            <span style="font-size: 0.85rem; color: #666;">
+                                Awakening Score: {r['awakening_score']:.0f}/100 | 
+                                Revival Chance: {r['revival_chance']:.1%}
+                            </span>
+                        </div>
+                        """, unsafe_allow_html=True)
+            
+            # Tab 4: Authors
+            with tabs[3]:
+                st.markdown(f"### {t['author_dashboard']}")
+                
+                # Top authors
+                st.markdown("#### 🏆 Top Authors by Citations")
+                top_authors = author_analyzer.get_top_authors(10)
+                
+                author_data = []
+                for author in top_authors:
+                    author_data.append({
+                        'Author': author['name'][:30],
+                        'Articles': author['articles'],
+                        'Citations': author['total_citations'],
+                        'H-index': author['h_index'],
+                        'Career Stage': author['career_stage'],
+                        'Active': '✅' if author['active'] else '❌'
+                    })
+                
+                df_authors = pd.DataFrame(author_data)
+                st.dataframe(df_authors, use_container_width=True)
+                
+                # Collaboration network
+                st.markdown("#### 🤝 Collaboration Network")
+                network = author_analyzer.get_collaboration_network(15)
+                
+                if network['edges']:
+                    import networkx as nx
+                    G = nx.Graph()
+                    
+                    for node in network['nodes']:
+                        G.add_node(node['id'], articles=node['articles'])
+                    
+                    for edge in network['edges']:
+                        G.add_edge(edge['source'], edge['target'], weight=edge['weight'])
+                    
+                    if G.nodes():
+                        pos = nx.spring_layout(G, k=2, iterations=50)
+                        
+                        # Create edge trace
+                        edge_trace = go.Scatter(
+                            x=[],
+                            y=[],
+                            line=dict(width=1, color='#888'),
+                            hoverinfo='none',
+                            mode='lines'
+                        )
+                        
+                        for edge in G.edges():
+                            x0, y0 = pos[edge[0]]
+                            x1, y1 = pos[edge[1]]
+                            edge_trace['x'] += (x0, x1, None)
+                            edge_trace['y'] += (y0, y1, None)
+                        
+                        # Create node trace
+                        node_trace = go.Scatter(
+                            x=[],
+                            y=[],
+                            text=[],
+                            mode='markers+text',
+                            hoverinfo='text',
+                            marker=dict(
+                                size=[],
+                                color=[],
+                                line=dict(width=2, color='white')
+                            )
+                        )
+                        
+                        for node in G.nodes():
+                            x, y = pos[node]
+                            node_trace['x'] += (x,)
+                            node_trace['y'] += (y,)
+                            node_trace['text'] += (node,)
+                            node_trace['marker']['size'] += (10 + G.nodes[node]['articles'] * 2,)
+                            node_trace['marker']['color'] += ('#667eea',)
+                        
+                        fig_network = go.Figure(data=[edge_trace, node_trace])
+                        fig_network.update_layout(
+                            title='Author Collaboration Network',
+                            showlegend=False,
+                            hovermode='closest',
+                            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+                        )
+                        st.plotly_chart(fig_network, use_container_width=True)
                 else:
-                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}"
+                    st.info("Not enough collaboration data to build network.")
+            
+            # Tab 5: Predictions
+            with tabs[4]:
+                st.markdown(f"### {t['predictor_dashboard']}")
                 
-                with st.expander(expander_title):
-                    for field, subfields in fields.items():
-                        field_stats = domain_stats.get('fields', {}).get(field, {})
-                        field_articles = field_stats.get('articles', 0)
-                        field_citations = field_stats.get('citations', 0) if st.session_state.include_metrics else 0
-                        
-                        if st.session_state.include_metrics:
-                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}")
-                        else:
-                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}")
-                        
-                        for subfield, topics in subfields.items():
-                            subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
-                            subfield_articles = subfield_stats.get('articles', 0)
-                            subfield_citations = subfield_stats.get('citations', 0) if st.session_state.include_metrics else 0
+                predictions = predictor.predict_all_articles()
+                
+                # Filters
+                col1, col2 = st.columns(2)
+                with col1:
+                    min_score = st.slider("Minimum Score", 0, 100, 50, key="pred_min_score")
+                with col2:
+                    categories_list = list(set(p['category'] for p in predictions))
+                    selected_categories = st.multiselect("Categories", categories_list, 
+                                                       default=categories_list[:2])
+                
+                filtered = [p for p in predictions 
+                           if p['predicted_score'] >= min_score
+                           and (not selected_categories or p['category'] in selected_categories)]
+                
+                st.markdown(f"#### 🔮 Citation Potential Predictions ({len(filtered)} articles)")
+                
+                for pred in filtered[:15]:
+                    color = '#4CAF50' if pred['predicted_score'] > 70 else '#FFA726' if pred['predicted_score'] > 50 else '#EF5350'
+                    
+                    st.markdown(f"""
+                    <div style="background: {color}10; border-left: 4px solid {color};
+                                padding: 12px; border-radius: 8px; margin: 8px 0;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <b>{pred['title'][:100]}</b>
+                            <span style="font-weight: bold; color: {color};">Score: {pred['predicted_score']:.0f}</span>
+                        </div>
+                        <span style="font-size: 0.85rem; color: #666;">
+                            {pred['category']} | 📅 {pred['year']} | 
+                            📊 Actual: {pred['actual_citations']} | 
+                            📈 Predicted: {pred['predicted_citations']}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if pred['recommendations']:
+                        with st.expander("💡 Recommendations"):
+                            for rec in pred['recommendations']:
+                                st.markdown(f"• {rec}")
+            
+            # Tab 6: Editor's Choice
+            with tabs[5]:
+                st.markdown(f"### {t['editors_choice']}")
+                
+                editors_selection = editors_choice.select_candidates()
+                
+                # Top Picks
+                st.markdown("#### 🏆 Top Picks")
+                
+                for idx, pick in enumerate(editors_selection['top_picks'], 1):
+                    article = pick['article']
+                    stars = '⭐' * min(5, int(pick['score'] / 20 + 1))
+                    
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #FFD70015 0%, #FFA50015 100%);
+                                padding: 16px; border-radius: 12px; margin: 10px 0;
+                                border: 1px solid #FFD700;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 1.2rem; font-weight: bold;">#{idx}</span>
+                            <span style="font-size: 1.5rem;">{stars}</span>
+                        </div>
+                        <b style="font-size: 1.1rem;">{article.get('title', 'No title')}</b><br>
+                        <span style="color: #555;">
+                            👤 {article.get('authors', 'Unknown')} | 
+                            📅 {article.get('publication_year', 'N/A')}
+                        </span><br>
+                        <span style="color: #666; font-size: 0.9rem;">
+                            📊 Citations: {article.get('cited_by_count', 0)} | 
+                            📈 Score: {pick['score']:.0f}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    with st.expander("📋 Selection Criteria"):
+                        for criterion in pick['criteria']:
+                            st.markdown(f"✅ {criterion}")
+                        st.markdown(f"💡 **Recommendation**: {pick['recommendation']}")
+                
+                # Statistics
+                st.markdown("#### 📊 Selection Statistics")
+                stats_ec = editors_selection['statistics']
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Candidates", stats_ec['total_candidates'])
+                with col2:
+                    st.metric("Average Score", f"{stats_ec['avg_score']:.1f}")
+                with col3:
+                    if stats_ec['top_categories']:
+                        st.metric("Top Category", stats_ec['top_categories'][0][0])
+            
+            # Tab 7: Research Hierarchy (original view)
+            with tabs[6]:
+                st.markdown(f"### {t['research_hierarchy']}")
+                
+                for domain, fields in hierarchy.items():
+                    domain_stats = stats.get(domain, {})
+                    domain_articles = domain_stats.get('articles', 0)
+                    domain_citations = domain_stats.get('citations', 0) if st.session_state.include_metrics else 0
+                    
+                    if st.session_state.include_metrics:
+                        expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}"
+                    else:
+                        expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}"
+                    
+                    with st.expander(expander_title):
+                        for field, subfields in fields.items():
+                            field_stats = domain_stats.get('fields', {}).get(field, {})
+                            field_articles = field_stats.get('articles', 0)
+                            field_citations = field_stats.get('citations', 0) if st.session_state.include_metrics else 0
                             
                             if st.session_state.include_metrics:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}")
+                                st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}")
                             else:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}")
+                                st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}")
                             
-                            for topic, articles in topics.items():
-                                topic_articles = len(articles)
-                                topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
+                            for subfield, topics in subfields.items():
+                                subfield_stats = field_stats.get('subfields', {}).get(subfield, {})
+                                subfield_articles = subfield_stats.get('articles', 0)
+                                subfield_citations = subfield_stats.get('citations', 0) if st.session_state.include_metrics else 0
                                 
                                 if st.session_state.include_metrics:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']}")
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}")
                                 else:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}")
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}")
                                 
-                                for idx, article in enumerate(articles[:5]):  
-                                    title = article.get('title') or 'No title'
-                                    authors = article.get('authors') or 'N/A'
-                                    st.markdown(f"""
-                                    <div style="padding: 8px; margin: 4px 0 4px 60px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;">
-                                        <b>{idx+1}. {title[:80]}{'...' if len(title) > 80 else ''}</b><br>
-                                        {t['authors_icon']} {authors[:80]}<br>
-                                        📊 {t['citations']}: {article.get('cited_by_count', 0)} ({t['citations_per_year']}: {article.get('citations_per_year', 0)})
-                                        {f' 🔥' if article.get('is_highly_cited') else ''}<br>
-                                        {t['link_icon']} <a href="{article.get('doi_url', '#')}" target="_blank">{t['view_article']}</a>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                
-                                if len(articles) > 5:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*... and {len(articles) - 5} more articles*")
+                                for topic, topic_articles in topics.items():
+                                    topic_articles_count = len(topic_articles)
+                                    topic_citations_sum = sum(a.get('cited_by_count', 0) for a in topic_articles)
+                                    
+                                    if st.session_state.include_metrics:
+                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles_count} {t['articles_count']}, {topic_citations_sum} {t['citations']}")
+                                    else:
+                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles_count} {t['articles_count']}")
             
             # Export section
             st.markdown("---")
