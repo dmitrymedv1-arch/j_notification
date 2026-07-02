@@ -3341,7 +3341,8 @@ class JournalProfileGenerator:
             
             scored_articles.append((score, article))
         
-        scored_articles.sort(reverse=True)
+        # Sort by score only, not comparing the article dicts
+        scored_articles.sort(key=lambda x: x[0], reverse=True)
         return [article for _, article in scored_articles[:5]]
     
     def _has_international_collaboration(self, article: dict) -> bool:
@@ -3353,8 +3354,12 @@ class JournalProfileGenerator:
         # Ensure authors are strings
         name_styles = set()
         for author in authors:
-            if not isinstance(author, str):
+            # Handle case when author is a dict
+            if isinstance(author, dict):
+                author = author.get('display_name', '') or author.get('name', '')
+            elif not isinstance(author, str):
                 author = str(author) if author else ''
+            
             if not author:
                 continue
                 
