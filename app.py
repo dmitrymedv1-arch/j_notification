@@ -2447,8 +2447,8 @@ class CitationPredictor:
         if articles_in_journal == 0:
             return 0.5
         
-        if = citations_to_journal / articles_in_journal
-            return min(1, if / 5)  # Normalize: IF 5 = 1.0
+        impact_factor = citations_to_journal / articles_in_journal
+        return min(1, impact_factor / 5)  # Normalize: IF 5 = 1.0
     
     def _calculate_novelty_score_article(self, article: dict) -> float:
         """Calculates novelty score for an article"""
