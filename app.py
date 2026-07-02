@@ -3317,7 +3317,13 @@ class JournalProfileGenerator:
             
             # 2. Topic relevance
             topic = article.get('primary_topic', '')
-            if any(w in topic.lower() for w in ['emerging', 'future', 'novel']):
+            # Handle case when topic is a dict (from OpenAlex)
+            if isinstance(topic, dict):
+                topic = topic.get('display_name', '')
+            elif not isinstance(topic, str):
+                topic = str(topic) if topic else ''
+            
+            if topic and any(w in topic.lower() for w in ['emerging', 'future', 'novel']):
                 score += 20
             
             # 3. Article age (younger gets bonus)
@@ -3341,11 +3347,17 @@ class JournalProfileGenerator:
     def _has_international_collaboration(self, article: dict) -> bool:
         """Checks for international collaboration"""
         authors = article.get('authors_list', [])
-        if len(authors) < 2:
+        if not authors or len(authors) < 2:
             return False
         
+        # Ensure authors are strings
         name_styles = set()
         for author in authors:
+            if not isinstance(author, str):
+                author = str(author) if author else ''
+            if not author:
+                continue
+                
             if re.search(r'[a-z]', author) and re.search(r'[A-Z]', author):
                 name_styles.add('western')
             elif re.search(r'[а-яА-Я]', author):
