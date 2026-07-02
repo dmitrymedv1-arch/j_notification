@@ -1927,7 +1927,13 @@ class CitationDynamicsAnalyzer:
             factors.append(0.0)
         
         topic = article.get('primary_topic', '')
-        if any(word in topic.lower() for word in ['machine learning', 'ai', 'climate', 'covid', 'quantum']):
+        # Handle case when topic is a dict (from OpenAlex)
+        if isinstance(topic, dict):
+            topic = topic.get('display_name', '')
+        elif not isinstance(topic, str):
+            topic = str(topic) if topic else ''
+        
+        if topic and any(word in topic.lower() for word in ['machine learning', 'ai', 'climate', 'covid', 'quantum']):
             factors.append(0.3)
         
         recent_citations_sum = sum([history[y] for y in list(history.keys())[-3:]])
