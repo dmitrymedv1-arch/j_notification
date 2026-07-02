@@ -2620,8 +2620,14 @@ class EditorsChoiceModule:
         self.dynamics_analyzer = CitationDynamicsAnalyzer(articles)
         self.analyzed_articles = self.dynamics_analyzer.analyze_all_articles()
     
-    def _get_topic_importance(self, topic: str) -> float:
+    def _get_topic_importance(self, topic) -> float:
         """Evaluates topic importance for the journal"""
+        # Handle case when topic is a dict (from OpenAlex)
+        if isinstance(topic, dict):
+            topic = topic.get('display_name', '')
+        elif not isinstance(topic, str):
+            topic = str(topic) if topic else ''
+        
         if not topic:
             return 0
         
@@ -2719,6 +2725,12 @@ class EditorsChoiceModule:
     def _is_topic_leader(self, article: dict) -> bool:
         """Checks if article is a leader in its topic"""
         topic = article.get('primary_topic', '')
+        # Handle case when topic is a dict
+        if isinstance(topic, dict):
+            topic = topic.get('display_name', '')
+        elif not isinstance(topic, str):
+            topic = str(topic) if topic else ''
+        
         if not topic:
             return False
         
@@ -2754,6 +2766,12 @@ class EditorsChoiceModule:
         
         # 2. Topic importance (25%)
         topic = article.get('primary_topic', '')
+        # Handle case when topic is a dict
+        if isinstance(topic, dict):
+            topic = topic.get('display_name', '')
+        elif not isinstance(topic, str):
+            topic = str(topic) if topic else ''
+        
         topic_score = self._get_topic_importance(topic)
         score += topic_score * 0.25
         
