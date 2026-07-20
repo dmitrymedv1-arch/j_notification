@@ -118,6 +118,9 @@ LANGUAGES = {
         'subfield_icon': '📂',
         'topic_icon': '🔬',
         'authors_icon': '👤',
+        'avg_citations': 'Avg Citations (per year)',
+        'avg_citations_tooltip': 'Average citations per year across all articles. Normalizes citation counts by article age for fair comparison.',
+        'citations_per_year_short': '(citations/year)',
         'link_icon': '🔗'
     },
     'ru': {
@@ -183,6 +186,9 @@ LANGUAGES = {
         'subfield_icon': '📂',
         'topic_icon': '🔬',
         'authors_icon': '👤',
+        'avg_citations': 'Среднее цитирование (в год)',
+        'avg_citations_tooltip': 'Среднее количество цитирований в год для всех статей. Нормализует цитируемость по возрасту статьи для честного сравнения.',
+        'citations_per_year_short': '(цит/год)',
         'link_icon': '🔗'
     }
 }
@@ -1181,12 +1187,15 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
     """
     Calculate statistics for each hierarchy level.
     
+    For avg_citations, uses the MEAN of citations_per_year (not total citations / count).
+    This is more fair because it normalizes for article age.
+    
     Returns:
         {
             "domain_name": {
                 "articles": 100,
-                "citations": 5000,
-                "avg_citations": 50.0,
+                "citations": 5000,  # total citations (if include_metrics)
+                "avg_citations": 4.5,  # MEAN of citations_per_year
                 "fields": {...}
             }
         }
@@ -1195,24 +1204,29 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
     
     for domain, fields in hierarchy.items():
         domain_articles = 0
-        domain_citations = 0
+        domain_citations = 0  # total citations
+        domain_citations_per_year_sum = 0.0  # sum of citations_per_year for avg calculation
         field_stats = {}
         
         for field, subfields in fields.items():
             field_articles = 0
-            field_citations = 0
+            field_citations = 0  # total citations
+            field_citations_per_year_sum = 0.0
             subfield_stats = {}
             
             for subfield, topics in subfields.items():
                 subfield_articles = 0
-                subfield_citations = 0
+                subfield_citations = 0  # total citations
+                subfield_citations_per_year_sum = 0.0
                 topic_stats = {}
                 
                 for topic, articles in topics.items():
                     # Articles are already sorted by citations_per_year
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg_citations = topic_citations / topic_articles if topic_articles > 0 else 0
+                    # Calculate mean of citations_per_year for this topic
+                    topic_citations_per_year_sum = sum(a.get('citations_per_year', 0) for a in articles)
+                    topic_avg_citations = topic_citations_per_year_sum / topic_articles if topic_articles > 0 else 0
                     
                     topic_stats[topic] = {
                         'articles': topic_articles,
@@ -1223,8 +1237,9 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
                     
                     subfield_articles += topic_articles
                     subfield_citations += topic_citations
+                    subfield_citations_per_year_sum += topic_citations_per_year_sum
                 
-                subfield_avg = subfield_citations / subfield_articles if subfield_articles > 0 else 0
+                subfield_avg = subfield_citations_per_year_sum / subfield_articles if subfield_articles > 0 else 0
                 subfield_stats[subfield] = {
                     'articles': subfield_articles,
                     'citations': subfield_citations if include_metrics else None,
@@ -1234,8 +1249,9 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
                 
                 field_articles += subfield_articles
                 field_citations += subfield_citations
+                field_citations_per_year_sum += subfield_citations_per_year_sum
             
-            field_avg = field_citations / field_articles if field_articles > 0 else 0
+            field_avg = field_citations_per_year_sum / field_articles if field_articles > 0 else 0
             field_stats[field] = {
                 'articles': field_articles,
                 'citations': field_citations if include_metrics else None,
@@ -1245,8 +1261,9 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
             
             domain_articles += field_articles
             domain_citations += field_citations
+            domain_citations_per_year_sum += field_citations_per_year_sum
         
-        domain_avg = domain_citations / domain_articles if domain_articles > 0 else 0
+        domain_avg = domain_citations_per_year_sum / domain_articles if domain_articles > 0 else 0
         stats[domain] = {
             'articles': domain_articles,
             'citations': domain_citations if include_metrics else None,
@@ -1263,7 +1280,8 @@ def calculate_hierarchy_statistics(hierarchy: Dict, include_metrics: bool = True
 def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Dict:
     """
     Sort hierarchy according to rules:
-    - If include_metrics = True: sort by avg_citations (descending), then by name alphabetically
+    - If include_metrics = True: sort by avg_citations (MEAN of citations_per_year, descending), 
+      then by name alphabetically
     - If include_metrics = False: sort by articles count (descending), then by name alphabetically
     - Articles within each topic are always sorted by citations_per_year (descending)
     
@@ -1271,14 +1289,14 @@ def sort_hierarchy_by_rules(hierarchy: Dict, include_metrics: bool = True) -> Di
     """
     from collections import OrderedDict
     
-    # First calculate statistics for all levels
+    # First calculate statistics for all levels using the corrected function
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     
     sorted_hierarchy = OrderedDict()
     
     # Sort domains
     if include_metrics:
-        # Sort by avg_citations (descending), then by name alphabetically
+        # Sort by avg_citations (MEAN of citations_per_year, descending), then by name alphabetically
         domains_sorted = sorted(
             hierarchy.keys(),
             key=lambda d: (
@@ -1484,7 +1502,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
         text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         return text
     
-    # Calculate statistics
+    # Calculate statistics using the CORRECTED function (mean of citations_per_year)
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
@@ -1770,7 +1788,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
             ["Всего статей", str(total_articles)],
             ["Областей науки", str(total_domains)],
             ["Всего цитирований", str(total_citations)],
-            ["Средняя цитируемость", f"{total_citations/total_articles:.2f}" if total_articles > 0 else "0"],
+            ["Средняя цитируемость (цит/год)", f"{total_citations/total_articles:.2f}" if total_articles > 0 else "0"],
             ["Активно цитируемые статьи", str(highly_cited)]
         ]
     else:
@@ -1923,7 +1941,9 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                    # Calculate mean of citations_per_year for this topic
+                    topic_citations_per_year_sum = sum(a.get('citations_per_year', 0) for a in articles)
+                    topic_avg = topic_citations_per_year_sum / topic_articles if topic_articles > 0 else 0
                     
                     topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode('utf-8')).hexdigest()[:8]}"
                     topic_anchor_para = Paragraph(f'<a name="{topic_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white, fontName=russian_font_name))
@@ -2001,7 +2021,7 @@ def generate_pdf_ru(journal_name: str, journal_abbr: str, years: List[int],
     включающих множество полей и подполей."""
     
     if include_metrics:
-        conclusion_text += f""" Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.
+        conclusion_text += f""" Общая средняя цитируемость (цитирований в год) составляет {avg_overall:.2f} цитирований на статью.
     Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения в Ваши научные работы.<br/><br/>"""
     
     conclusion_text += """
@@ -2093,7 +2113,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
         text = re.sub(allowed_pattern, '', text)
         return text
     
-    # Calculate statistics
+    # Calculate statistics using the CORRECTED function (mean of citations_per_year)
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
@@ -2515,7 +2535,9 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                    # Calculate mean of citations_per_year for this topic
+                    topic_citations_per_year_sum = sum(a.get('citations_per_year', 0) for a in articles)
+                    topic_avg = topic_citations_per_year_sum / topic_articles if topic_articles > 0 else 0
                     
                     topic_anchor_id = f"topic_{hashlib.md5(f"{domain}_{field}_{subfield}_{topic}".encode()).hexdigest()[:8]}"
                     topic_anchor_para = Paragraph(f'<a name="{topic_anchor_id}"/>', ParagraphStyle('AnchorStyle', parent=styles['Normal'], fontSize=1, textColor=colors.white))
@@ -2591,7 +2613,7 @@ def generate_pdf_en(journal_name: str, journal_abbr: str, years: List[int],
     encompassing multiple fields and subfields."""
     
     if include_metrics:
-        conclusion_text += f""" The overall average citation rate is {avg_overall:.2f} citations per article.
+        conclusion_text += f""" The overall average citation rate (citations per year) is {avg_overall:.2f} citations per article.
     Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.<br/><br/>"""
     
     conclusion_text += """
@@ -2674,7 +2696,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     years_str = format_year_filter_for_filename(years)
     
-    # Calculate statistics
+    # Calculate statistics using the CORRECTED function (mean of citations_per_year)
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
@@ -2713,7 +2735,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append(f"Областей науки: {total_domains}")
     if include_metrics:
         output.append(f"Всего цитирований: {total_citations}")
-        output.append(f"Средняя цитируемость: {avg_overall:.2f}")
+        output.append(f"Средняя цитируемость (цит/год): {avg_overall:.2f}")
         output.append(f"Активно цитируемые статьи: {highly_cited}")
     output.append("")
     output.append("=" * 80)
@@ -2829,7 +2851,9 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                    # Calculate mean of citations_per_year for this topic
+                    topic_citations_per_year_sum = sum(a.get('citations_per_year', 0) for a in articles)
+                    topic_avg = topic_citations_per_year_sum / topic_articles if topic_articles > 0 else 0
                     
                     if include_metrics:
                         output.append(f"  ● ТЕМА: {topic} — {topic_articles} статей, {topic_citations} цитирований (avg: {topic_avg:.1f})")
@@ -2882,7 +2906,7 @@ def generate_txt_ru(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append(f"включающих множество полей и подполей.")
     
     if include_metrics:
-        output.append(f"Общая средняя цитируемость составляет {avg_overall:.2f} цитирований на статью.")
+        output.append(f"Общая средняя цитируемость (цитирований в год) составляет {avg_overall:.2f} цитирований на статью.")
         output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
     else:
         output.append(f"Из них {highly_cited} статей являются активно цитируемыми, что делает их особенно ценными для включения")
@@ -2912,7 +2936,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     
     years_str = format_year_filter_for_filename(years)
     
-    # Calculate statistics
+    # Calculate statistics using the CORRECTED function (mean of citations_per_year)
     stats = calculate_hierarchy_statistics(hierarchy, include_metrics)
     total_articles = sum(s['articles'] for s in stats.values())
     total_domains = len(hierarchy)
@@ -2951,7 +2975,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append(f"Research Domains: {total_domains}")
     if include_metrics:
         output.append(f"Total Citations: {total_citations}")
-        output.append(f"Average Citations per Article: {avg_overall:.2f}")
+        output.append(f"Average Citations per Article (citations/year): {avg_overall:.2f}")
         output.append(f"Highly Cited Articles: {highly_cited}")
     output.append("")
     output.append("=" * 80)
@@ -3067,7 +3091,9 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
                 for topic, articles in topics.items():
                     topic_articles = len(articles)
                     topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
-                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                    # Calculate mean of citations_per_year for this topic
+                    topic_citations_per_year_sum = sum(a.get('citations_per_year', 0) for a in articles)
+                    topic_avg = topic_citations_per_year_sum / topic_articles if topic_articles > 0 else 0
                     
                     if include_metrics:
                         output.append(f"  ● TOPIC: {topic} — {topic_articles} articles, {topic_citations} citations (avg: {topic_avg:.1f})")
@@ -3121,7 +3147,7 @@ def generate_txt_en(journal_name: str, years: List[int], hierarchy: Dict, custom
     output.append(f"encompassing multiple fields and subfields.")
     
     if include_metrics:
-        output.append(f"The overall average citation rate is {avg_overall:.2f} citations per article.")
+        output.append(f"The overall average citation rate (citations per year) is {avg_overall:.2f} citations per article.")
         output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
     else:
         output.append(f"Among them, {highly_cited} articles are highly cited, making them particularly valuable for inclusion in your research.")
@@ -3351,7 +3377,10 @@ def main():
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-value">{avg_citations:.1f}</div>
-                    <div class="metric-label">{t['avg_citations']}</div>
+                    <div class="metric-label">
+                        {t['avg_citations']}
+                        <span style="font-size: 0.7rem; color: #999; cursor: help;" title="{t['avg_citations_tooltip']}">ⓘ</span>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
             with col4:
@@ -3469,7 +3498,8 @@ def main():
                 domain_citations = domain_stats.get('citations', 0) if st.session_state.include_metrics else 0
                 
                 if st.session_state.include_metrics:
-                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']}"
+                    domain_avg = domain_stats.get('avg_citations', 0)
+                    expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}, {domain_citations} {t['citations']} (avg: {domain_avg:.1f} {t.get('citations_per_year_short', '')})"
                 else:
                     expander_title = f"{t['domain_icon']} {domain} — {domain_articles} {t['articles_count']}"
                 
@@ -3480,7 +3510,8 @@ def main():
                         field_citations = field_stats.get('citations', 0) if st.session_state.include_metrics else 0
                         
                         if st.session_state.include_metrics:
-                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']}")
+                            field_avg = field_stats.get('avg_citations', 0)
+                            st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}, {field_citations} {t['citations']} (avg: {field_avg:.1f} {t.get('citations_per_year_short', '')})")
                         else:
                             st.markdown(f"**{t['field_icon']} {field}** — {field_articles} {t['articles_count']}")
                         
@@ -3490,7 +3521,8 @@ def main():
                             subfield_citations = subfield_stats.get('citations', 0) if st.session_state.include_metrics else 0
                             
                             if st.session_state.include_metrics:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']}")
+                                subfield_avg = subfield_stats.get('avg_citations', 0)
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}, {subfield_citations} {t['citations']} (avg: {subfield_avg:.1f} {t.get('citations_per_year_short', '')})")
                             else:
                                 st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{t['subfield_icon']} {subfield}** — {subfield_articles} {t['articles_count']}")
                             
@@ -3499,7 +3531,8 @@ def main():
                                 topic_citations = sum(a.get('cited_by_count', 0) for a in articles)
                                 
                                 if st.session_state.include_metrics:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']}")
+                                    topic_avg = topic_citations / topic_articles if topic_articles > 0 else 0
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}, {topic_citations} {t['citations']} (avg: {topic_avg:.1f} {t.get('citations_per_year_short', '')})")
                                 else:
                                     st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**{t['topic_icon']} {topic}** — {topic_articles} {t['articles_count']}")
                                 
