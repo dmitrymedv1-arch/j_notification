@@ -852,124 +852,71 @@ def format_year_filter_for_filename(years: List[int]) -> str:
     return ",".join(ranges)
 
 def fetch_articles_by_journal(source_id: str, years: List[int], progress_callback=None) -> List[dict]:
-    """
-    Fetch all journal articles for specified years.
-    Исправленная версия с надёжной пагинацией.
-    """
-    year_filter_str = ",".join(map(str, years))
-    cache_key = f"{source_id}_{year_filter_str}"
+    # Нормализация ID
+    if source_id and source_id.startswith("https://openalex.org/"):
+        source_id = source_id.replace("https://openalex.org/", "")
     
-    # Check cache
+    year_filter_str = ",".join(map(str, years))
+    
+    # Проверка кэша
     cached = get_cached_source_works(source_id, year_filter_str)
     if cached:
-        logger.info(f"Using cached articles for {source_id}, years {years}")
         return cached.get('articles', [])
     
-    logger.info(f"Fetching articles for source {source_id}, years {years}")
-    
     all_articles = []
-    cursor = "*"
-    page_count = 0
+    page = 1
+    per_page = 100          # Официальный максимум теперь 100, не 200
     total_count = 0
     
-    # Нормализуем ID источника (OpenAlex ожидает вида S4210239818)
-    source_id_clean = source_id.split('/')[-1] if '/' in source_id else source_id
-    
-    # Фильтр: используем primary_location.source.id
-    # Годы через | (OR) — валидно для OpenAlex
     years_str = "|".join(map(str, years))
-    filter_str = f"primary_location.source.id:{source_id_clean},publication_year:{years_str}"
+    filter_str = f"primary_location.source.id:{source_id},publication_year:{years_str}"
     
-    try:
-        while True:
-            page_count += 1
-            
-            params = {
-                "filter": filter_str,
-                "per-page": CURSOR_PAGE_SIZE,
-                "cursor": cursor,
-                "mailto": MAILTO,
-                # ВАЖНО: убираем sort — курсорная пагинация с sort может ломаться
-                # Если нужна сортировка — сортируем уже локально
-            }
-            
-            url = f"{OPENALEX_BASE_URL}/works"
-            response = requests.get(url, params=params, headers=POLITE_POOL_HEADER, timeout=60)
-            
-            if response.status_code != 200:
-                logger.error(f"Error fetching articles: {response.status_code} — {response.text[:200]}")
-                break
-            
-            data = response.json()
-            
-            if page_count == 1:
-                total_count = data.get('meta', {}).get('count', 0)
-                logger.info(f"Total articles found: {total_count}")
-                
-                if total_count == 0:
-                    return []
-            
-            articles = data.get('results', [])
-            if not articles:
-                break
-            
-            all_articles.extend(articles)
-            
-            if progress_callback and total_count > 0:
-                progress = min(len(all_articles) / total_count, 1.0)
-                progress_callback(progress, len(all_articles), page_count, total_count)
-            
-            logger.info(f"Page {page_count}: got {len(articles)} articles, total: {len(all_articles)}/{total_count}")
-            
-            next_cursor = data.get('meta', {}).get('next_cursor')
-            if not next_cursor:
-                logger.info(f"Pagination finished at page {page_count}, total collected: {len(all_articles)}")
-                break
-            
-            cursor = next_cursor
-            time.sleep(0.15)  # вежливая пауза
+    while True:
+        params = {
+            "filter": filter_str,
+            "per-page": per_page,   # Обратите внимание: официальное имя параметра — per_page
+            "page": page,
+            "mailto": MAILTO,
+            "sort": "publication_date:desc"
+        }
         
-        # Если собрали меньше, чем ожидалось — попробуем альтернативный фильтр
-        if total_count > 0 and len(all_articles) < total_count:
-            logger.warning(
-                f"Collected {len(all_articles)} of {total_count}. "
-                f"Trying alternative filter via locations.source.id..."
-            )
-            # Альтернативный фильтр — работа состоит в источнике (любая локация)
-            alt_filter = f"locations.source.id:{source_id_clean},publication_year:{years_str}"
-            alt_articles = _fetch_with_filter(alt_filter)
-            
-            # Объединяем по ID работы, убирая дубликаты
-            seen_ids = {a.get('id') for a in all_articles if a.get('id')}
-            for a in alt_articles:
-                if a.get('id') not in seen_ids:
-                    all_articles.append(a)
-                    seen_ids.add(a.get('id'))
-            
-            logger.info(f"After alternative filter: {len(all_articles)} articles")
+        # Добавление API-ключа (если есть)
+        api_key = os.getenv("OPENALEX_API_KEY")
+        if api_key:
+            params["api_key"] = api_key
         
-        # Локальная сортировка по дате публикации (desc)
-        all_articles.sort(
-            key=lambda x: x.get('publication_date') or '',
-            reverse=True
-        )
+        response = requests.get(f"{OPENALEX_BASE_URL}/works", 
+                                params=params, headers=POLITE_POOL_HEADER, timeout=60)
         
-        # Save to cache
-        if all_articles:
-            cache_data = {
-                'articles': all_articles,
-                'total_count': len(all_articles),
-                'years': years,
-                'timestamp': datetime.now().isoformat()
-            }
-            cache_source_works(source_id, year_filter_str, cache_data)
+        if response.status_code != 200:
+            logger.error(f"Page {page} failed: {response.status_code} — {response.text[:300]}")
+            break
         
-        return all_articles
+        data = response.json()
         
-    except Exception as e:
-        logger.error(f"Error in fetch_articles_by_journal: {str(e)}")
-        return all_articles
-
+        if page == 1:
+            total_count = data.get('meta', {}).get('count', 0)
+            logger.info(f"Total: {total_count}")
+        
+        articles = data.get('results', [])
+        if not articles:
+            break
+        
+        all_articles.extend(articles)
+        
+        if progress_callback:
+            progress_callback(min(len(all_articles)/total_count, 1.0), 
+                            len(all_articles), page, total_count)
+        
+        # Условие завершения: получили всё или последняя страница
+        if len(all_articles) >= total_count or len(articles) < per_page:
+            break
+        
+        page += 1
+        time.sleep(0.12)
+    
+    # Сохранение в кэш...
+    return all_articles
 
 def _fetch_with_filter(filter_str: str) -> List[dict]:
     """Вспомогательная функция: сбор всех работ по заданному фильтру с курсором."""
