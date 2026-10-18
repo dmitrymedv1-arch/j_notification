@@ -854,6 +854,7 @@ def format_year_filter_for_filename(years: List[int]) -> str:
 def fetch_articles_by_journal(source_id: str, years: List[int], progress_callback=None) -> List[dict]:
     """
     Fetch all journal articles for specified years.
+    Исправленная версия с надёжной пагинацией.
     """
     year_filter_str = ",".join(map(str, years))
     cache_key = f"{source_id}_{year_filter_str}"
@@ -871,9 +872,13 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     page_count = 0
     total_count = 0
     
-    # Use more reliable filter via primary_location.source.id
+    # Нормализуем ID источника (OpenAlex ожидает вида S4210239818)
+    source_id_clean = source_id.split('/')[-1] if '/' in source_id else source_id
+    
+    # Фильтр: используем primary_location.source.id
+    # Годы через | (OR) — валидно для OpenAlex
     years_str = "|".join(map(str, years))
-    filter_str = f"primary_location.source.id:{source_id},publication_year:{years_str}"
+    filter_str = f"primary_location.source.id:{source_id_clean},publication_year:{years_str}"
     
     try:
         while True:
@@ -884,14 +889,15 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
                 "per-page": CURSOR_PAGE_SIZE,
                 "cursor": cursor,
                 "mailto": MAILTO,
-                "sort": "publication_date:desc"
+                # ВАЖНО: убираем sort — курсорная пагинация с sort может ломаться
+                # Если нужна сортировка — сортируем уже локально
             }
             
             url = f"{OPENALEX_BASE_URL}/works"
             response = requests.get(url, params=params, headers=POLITE_POOL_HEADER, timeout=60)
             
             if response.status_code != 200:
-                logger.error(f"Error fetching articles: {response.status_code}")
+                logger.error(f"Error fetching articles: {response.status_code} — {response.text[:200]}")
                 break
             
             data = response.json()
@@ -917,16 +923,42 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
             
             next_cursor = data.get('meta', {}).get('next_cursor')
             if not next_cursor:
+                logger.info(f"Pagination finished at page {page_count}, total collected: {len(all_articles)}")
                 break
             
             cursor = next_cursor
-            time.sleep(0.1)
+            time.sleep(0.15)  # вежливая пауза
+        
+        # Если собрали меньше, чем ожидалось — попробуем альтернативный фильтр
+        if total_count > 0 and len(all_articles) < total_count:
+            logger.warning(
+                f"Collected {len(all_articles)} of {total_count}. "
+                f"Trying alternative filter via locations.source.id..."
+            )
+            # Альтернативный фильтр — работа состоит в источнике (любая локация)
+            alt_filter = f"locations.source.id:{source_id_clean},publication_year:{years_str}"
+            alt_articles = _fetch_with_filter(alt_filter)
+            
+            # Объединяем по ID работы, убирая дубликаты
+            seen_ids = {a.get('id') for a in all_articles if a.get('id')}
+            for a in alt_articles:
+                if a.get('id') not in seen_ids:
+                    all_articles.append(a)
+                    seen_ids.add(a.get('id'))
+            
+            logger.info(f"After alternative filter: {len(all_articles)} articles")
+        
+        # Локальная сортировка по дате публикации (desc)
+        all_articles.sort(
+            key=lambda x: x.get('publication_date') or '',
+            reverse=True
+        )
         
         # Save to cache
         if all_articles:
             cache_data = {
                 'articles': all_articles,
-                'total_count': total_count,
+                'total_count': len(all_articles),
                 'years': years,
                 'timestamp': datetime.now().isoformat()
             }
@@ -937,6 +969,35 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
     except Exception as e:
         logger.error(f"Error in fetch_articles_by_journal: {str(e)}")
         return all_articles
+
+
+def _fetch_with_filter(filter_str: str) -> List[dict]:
+    """Вспомогательная функция: сбор всех работ по заданному фильтру с курсором."""
+    results = []
+    cursor = "*"
+    while True:
+        params = {
+            "filter": filter_str,
+            "per-page": CURSOR_PAGE_SIZE,
+            "cursor": cursor,
+            "mailto": MAILTO,
+        }
+        try:
+            r = requests.get(f"{OPENALEX_BASE_URL}/works", params=params,
+                             headers=POLITE_POOL_HEADER, timeout=60)
+            if r.status_code != 200:
+                logger.error(f"Alt filter failed: {r.status_code}")
+                break
+            d = r.json()
+            results.extend(d.get('results', []))
+            cursor = d.get('meta', {}).get('next_cursor')
+            if not cursor:
+                break
+            time.sleep(0.15)
+        except Exception as e:
+            logger.error(f"Alt filter exception: {e}")
+            break
+    return results
 
 # ============================================================================
 # CITATION METRICS CALCULATION
