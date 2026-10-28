@@ -864,24 +864,29 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
         return cached.get('articles', [])
     
     all_articles = []
-    page = 1
-    per_page = 100          # Официальный максимум теперь 100, не 200
+    per_page = 100
     total_count = 0
+    
+    # Получаем API-ключ из secrets
+    try:
+        api_key = st.secrets["OPENALEX_API_KEY"]
+    except (KeyError, FileNotFoundError):
+        api_key = None
     
     years_str = "|".join(map(str, years))
     filter_str = f"primary_location.source.id:{source_id},publication_year:{years_str}"
     
-    while True:
+    cursor = "*"
+    page = 0
+    while cursor:
+        page += 1
         params = {
             "filter": filter_str,
-            "per-page": per_page,   # Обратите внимание: официальное имя параметра — per_page
-            "page": page,
-            "mailto": MAILTO,
+            "per-page": per_page,
+            "cursor": cursor,
             "sort": "publication_date:desc"
         }
         
-        # Добавление API-ключа (если есть)
-        api_key = os.getenv("OPENALEX_API_KEY")
         if api_key:
             params["api_key"] = api_key
         
@@ -890,6 +895,8 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
         
         if response.status_code != 200:
             logger.error(f"Page {page} failed: {response.status_code} — {response.text[:300]}")
+            if response.status_code == 401:
+                logger.error("API-ключ отсутствует или недействителен. Курсорная пагинация за пределами первой страницы недоступна.")
             break
         
         data = response.json()
@@ -905,14 +912,14 @@ def fetch_articles_by_journal(source_id: str, years: List[int], progress_callbac
         all_articles.extend(articles)
         
         if progress_callback:
-            progress_callback(min(len(all_articles)/total_count, 1.0), 
+            progress_callback(min(len(all_articles)/total_count, 1.0) if total_count else 0,
                             len(all_articles), page, total_count)
         
-        # Условие завершения: получили всё или последняя страница
-        if len(all_articles) >= total_count or len(articles) < per_page:
+        # Получаем следующий курсор; если его нет — завершаем
+        cursor = data.get('meta', {}).get('next_cursor')
+        if len(all_articles) >= total_count:
             break
         
-        page += 1
         time.sleep(0.12)
     
     # Сохранение в кэш...
